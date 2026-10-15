@@ -34,9 +34,9 @@ sidepanel/
   tabs/translate/        The Translate tab (UI + state)
 ```
 
-## Adding the next tab (Pronunciation, Dictionary, ...)
+## Adding a tab
 
-1. Create `sidepanel/tabs/pronunciation/pronunciation.js` that default-exports:
+1. Create a module under `sidepanel/tabs/` that default-exports:
    ```js
    export default {
      async mount(root, ctx) {
@@ -48,7 +48,7 @@ sidepanel/
      },
    };
    ```
-2. In `sidepanel/tabs/registry.js`, set `enabled: true` and `load: () => import("./pronunciation/pronunciation.js")` on the existing placeholder entry.
+2. Add an entry for the tab in `sidepanel/tabs/registry.js` with its `id`, `label`, and `load: () => import(...)`.
 
 That's the whole change. The shell, tab bar, selection events, and storage are already shared.
 

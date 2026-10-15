@@ -1,5 +1,5 @@
 // Everything the side panel needs to know about the browser tab lives here, so feature
-// tabs (Translate now, Pronunciation/Dictionary later) never touch chrome.tabs directly.
+// tabs never touch chrome.tabs directly.
 import { MSG } from "./messages.js";
 
 const RESTRICTED =

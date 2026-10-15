@@ -37,7 +37,6 @@ Select *Phrase*, then highlight text on the page with your cursor. It appears in
 
 ## Known limitations
 
-- Pronunciation and Dictionary tabs are greyed out. They're planned for the next sprint.
 - Pages open in Chrome's built-in PDF viewer, `chrome://` pages and the Chrome Web Store can't be read by any extension.
 - Single-page apps that change content without reloading may need the refresh icon.
 - Text inside embedded frames (iframes) isn't read.

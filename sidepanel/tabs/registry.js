@@ -13,14 +13,4 @@ export const TABS = [
     enabled: true,
     load: () => import("./translate/translate.js"),
   },
-  {
-    id: "pronunciation",
-    label: "Pronunciation",
-    enabled: false, // next sprint: set to true and point `load` at ./pronunciation/pronunciation.js
-  },
-  {
-    id: "dictionary",
-    label: "Dictionary",
-    enabled: false,
-  },
 ];
