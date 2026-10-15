@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "Lingua",
+  "version": "0.1",
+  "description": "Translate the page you're reading or just the phrase you highlight, in a side panel that stays open while you browse.",
+  "permissions": ["sidePanel", "storage", "scripting"],
+  "host_permissions": ["<all_urls>"],
+  "background": { "service_worker": "background.js" },
+  "action": {
+    "default_title": "Open Lingua",
+    "default_icon": { "16": "icons/icon16.png", "32": "icons/icon32.png", "48": "icons/icon48.png" }
+  },
+  "side_panel": { "default_path": "sidepanel/index.html" },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content/content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "icons": { "16": "icons/icon16.png", "32": "icons/icon32.png", "48": "icons/icon48.png", "128": "icons/icon128.png" }
+}
