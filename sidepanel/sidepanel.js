@@ -2,16 +2,33 @@
 // It knows nothing about translation. Every feature lives in tabs/<name>/.
 import { TABS } from "./tabs/registry.js";
 import { createContext } from "../core/context.js";
-import { FEEDBACK_URL, VERSION_LABEL } from "../core/config.js";
+import { FEEDBACK_URL } from "../core/config.js";
 
 const ctx = createContext();
 const tabBar = document.getElementById("tabs");
 const panels = document.getElementById("panels");
+const themeToggle = document.getElementById("theme-toggle");
 const mounted = new Map(); // id -> { panel, controller }
 let activeId = null;
+const THEME_KEY = "app.theme";
 
-document.getElementById("version-badge").textContent = VERSION_LABEL;
 document.getElementById("feedback-link").href = FEEDBACK_URL;
+
+function applyTheme(theme) {
+  const isDark = theme === "dark";
+  document.documentElement.dataset.theme = isDark ? "dark" : "light";
+  themeToggle.textContent = isDark ? "Light mode" : "Dark mode";
+  themeToggle.setAttribute("aria-pressed", String(isDark));
+}
+
+themeToggle.addEventListener("click", async () => {
+  const nextTheme = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+  applyTheme(nextTheme);
+  await ctx.storage.set(THEME_KEY, nextTheme);
+});
+
+// A saved choice wins over the default light theme every time the panel opens.
+ctx.storage.get(THEME_KEY, "light").then(applyTheme);
 
 function renderTabBar() {
   tabBar.innerHTML = "";

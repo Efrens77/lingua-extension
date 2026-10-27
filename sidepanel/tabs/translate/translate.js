@@ -183,7 +183,8 @@ export default {
     }
 
     function renderRecent() {
-      el.recentSection.hidden = state.recent.length === 0;
+      // Recents belong to Phrase mode; Full page translations are not saved as recents.
+      el.recentSection.hidden = state.mode !== "phrase" || state.recent.length === 0;
       el.recentList.replaceChildren(
         ...state.recent.map((item) => {
           const li = document.createElement("li");
@@ -340,6 +341,7 @@ export default {
       state.detected = null;
       persist();
       renderSource();
+      renderRecent();
       setResult("empty");
       if (!doImport) return;
       if (mode === "page") importPage();
