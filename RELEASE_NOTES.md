@@ -34,6 +34,7 @@ Select *Phrase*, then highlight text on the page with your cursor. It appears in
 - Long pages are split up and translated in pieces (first 12,000 characters of a page)
 - Phrases up to 5,000 characters
 - Copy and listen buttons, recent translations
+- Simplified side-panel branding to avoid a duplicate Lingua header
 
 ## Known limitations
 
