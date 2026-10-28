@@ -12,17 +12,58 @@ function abortError() {
   return new DOMException("Aborted", "AbortError");
 }
 
+function rateLimitError() {
+  const err = new Error("Translation service limit reached. Please wait a moment and try again.");
+  err.name = "RateLimitError";
+  err.rateLimited = true;
+  return err;
+}
+
+function retryDelay(retryAfter, attempt) {
+  const seconds = Number(retryAfter);
+  if (Number.isFinite(seconds) && seconds >= 0) return Math.min(seconds * 1000, 30000);
+  const date = Date.parse(retryAfter || "");
+  if (Number.isFinite(date)) return Math.min(Math.max(0, date - Date.now()), 30000);
+  return Math.min(1000 * (2 ** attempt), 8000);
+}
+
+function wait(ms, signal) {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) return reject(abortError());
+    const timer = setTimeout(resolve, ms);
+    signal?.addEventListener("abort", () => {
+      clearTimeout(timer);
+      reject(abortError());
+    }, { once: true });
+  });
+}
+
 async function translateChunk(chunk, opts, providers) {
   const errors = [];
+  let wasRateLimited = false;
   for (const provider of providers) {
-    try {
-      const r = await provider.translate({ ...opts, text: chunk });
-      return { ...r, provider: provider.id };
-    } catch (err) {
-      if (err?.name === "AbortError") throw err;
-      errors.push(`${provider.label}: ${err.message}`);
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const r = await provider.translate({ ...opts, text: chunk });
+        return { ...r, provider: provider.id };
+      } catch (err) {
+        if (err?.name === "AbortError") throw err;
+        if (err?.status !== 429) {
+          errors.push(`${provider.label}: ${err.message}`);
+          break;
+        }
+        wasRateLimited = true;
+        if (attempt === 2) {
+          errors.push(`${provider.label}: ${err.message}`);
+          break;
+        }
+        await wait(retryDelay(err.retryAfter, attempt), opts.signal);
+      }
     }
+    // Do not immediately hammer the fallback after the primary was rate-limited.
+    if (wasRateLimited && provider !== providers[providers.length - 1]) await wait(1000, opts.signal);
   }
+  if (wasRateLimited) throw rateLimitError();
   throw new Error(errors.join(" | "));
 }
 

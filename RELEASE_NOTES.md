@@ -22,7 +22,7 @@ Open any article or website and open Lingua. It reads the page automatically and
 Select *Phrase*, then highlight text on the page with your cursor. It appears in the Original text box and is translated right away. You can also type or paste text into the box.
 
 **Both modes**
-- Pick the language you're translating from (or leave it on *Detect language*) and the language you want.
+- Pick the language you want to translate into. In Phrase mode, you can also choose the source language or leave it on *Detect language*.
 - The swap button flips the two languages.
 - Copy the result, or press the speaker icon to hear it read aloud.
 - Your last five phrase translations appear under *Recent translations*.
@@ -35,6 +35,10 @@ Select *Phrase*, then highlight text on the page with your cursor. It appears in
 - Phrases up to 5,000 characters
 - Copy and listen buttons, recent translations
 - Simplified side-panel branding to avoid a duplicate Lingua header
+- Full page translation now detects the source language, translates readable page text in place, and can restore the original text
+- Full page translation now persists per-tab state across panel closing and same-URL reloads, reports percentage progress, and translates safe visible labels in links, buttons, tabs, and menus
+- Full page translation now batches repeated page text, uses a queued request flow, and waits before retrying temporary translation-service limits
+- Full page translation now handles missing page state, unsupported pages, and temporary provider limits without leaving the panel in an error state
 
 ## Known limitations
 

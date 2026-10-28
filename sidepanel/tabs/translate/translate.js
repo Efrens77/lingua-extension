@@ -13,7 +13,7 @@ const MAX_RECENT = 5;
 const TYPING_DELAY_MS = 600;
 
 const HINTS = {
-  page: "Lingua reads the visible text on this page and translates it. Switch tabs and it follows you.",
+  page: "Lingua detects the page language and translates readable text in place. Switch back to Original text at any time.",
   phrase: "Highlight text on the page or type it below. Short passages work best here.",
 };
 
@@ -35,13 +35,18 @@ const TEMPLATE = `
     <p class="hint" data-el="hint"></p>
   </section>
 
-  <div class="lang-row">
+  <div class="lang-row" data-el="langRow">
     <select data-el="from" aria-label="Translate from"></select>
     <button type="button" class="icon-btn round" data-el="swap" aria-label="Swap languages" title="Swap languages">${ICONS.swap}</button>
     <select data-el="to" aria-label="Translate to"></select>
   </div>
 
-  <section class="card source-card">
+  <div class="page-view-toggle" data-el="pageViewToggle" role="group" aria-label="Page text view" hidden>
+    <button type="button" data-el="originalView">Original text</button>
+    <button type="button" data-el="translatedView">Translated text</button>
+  </div>
+
+  <section class="card source-card" data-el="sourceCard">
     <div class="card-head">
       <label class="field-label" for="tr-source">Original text</label>
       <span class="chip" data-el="detected" hidden></span>
@@ -83,12 +88,6 @@ function defaultTarget() {
   return code !== "en" && isSupported(code) ? code : "es";
 }
 
-function cutAtParagraph(text, limit) {
-  if (text.length <= limit) return { text, truncated: false };
-  const cut = text.lastIndexOf("\n", limit);
-  return { text: text.slice(0, cut > limit * 0.5 ? cut : limit).trim(), truncated: true };
-}
-
 function optionHtml(list, withAuto) {
   const auto = withAuto ? `<option value="${AUTO_CODE}">Detect language</option>` : "";
   return auto + list.map((l) => `<option value="${l.code}">${l.name}</option>`).join("");
@@ -109,6 +108,8 @@ export default {
       from: saved.from && (saved.from === AUTO_CODE || isSupported(saved.from)) ? saved.from : AUTO_CODE,
       to: saved.to && isSupported(saved.to) ? saved.to : defaultTarget(),
       text: { page: "", phrase: "" },
+      pageState: null,
+      pageView: "original",
       pageMeta: null,
       detected: null,
       result: "",
@@ -135,6 +136,17 @@ export default {
       el.to.value = state.to;
     }
 
+    function renderPageControls() {
+      const isPage = state.mode === "page";
+      el.langRow.dataset.mode = isPage ? "page" : "phrase";
+      el.from.hidden = isPage;
+      el.swap.hidden = isPage;
+      el.pageViewToggle.hidden = !isPage;
+      el.translatedView.disabled = false;
+      el.translatedView.setAttribute("aria-pressed", String(state.pageView === "translated"));
+      el.originalView.setAttribute("aria-pressed", String(state.pageView === "original"));
+    }
+
     function renderSource() {
       const isPage = state.mode === "page";
       const text = state.text[state.mode];
@@ -142,6 +154,7 @@ export default {
       el.source.maxLength = limit();
       el.source.value = text;
       el.source.placeholder = isPage ? "" : "Highlight text on the page, or type here…";
+      el.sourceCard.hidden = isPage;
       el.refresh.hidden = !isPage;
       el.clear.hidden = isPage || !text;
       el.count.textContent = `${text.length.toLocaleString()} / ${limit().toLocaleString()}`;
@@ -156,10 +169,16 @@ export default {
 
       el.detected.hidden = !state.detected;
       if (state.detected) el.detected.textContent = `Detected: ${nameOf(state.detected)}`;
+      renderPageControls();
     }
 
     // kind: empty | loading | done | error | notice
     function setResult(kind, message = "") {
+      if (state.mode === "page") {
+        el.resultCard.hidden = true;
+        return;
+      }
+      el.resultCard.hidden = false;
       el.resultCard.dataset.kind = kind;
       const showText = kind === "done" || kind === "loading";
       el.resultText.textContent =
@@ -179,7 +198,24 @@ export default {
         retry.addEventListener("click", () => run({ force: true }));
         el.status.append(span, retry);
       }
-      el.actions.hidden = !(kind === "done" && state.result);
+      el.actions.hidden = !(state.mode === "phrase" && kind === "done" && state.result);
+    }
+
+    function setPageProgress(percent = null, message = "") {
+      el.resultCard.hidden = percent === null;
+      if (percent === null) return;
+      el.resultCard.dataset.kind = "loading";
+      el.resultText.textContent = "";
+      el.status.textContent = message || `Translating page… ${percent}%`;
+      el.actions.hidden = true;
+    }
+
+    function showPageMessage(message) {
+      setPageProgress(0, message);
+    }
+
+    function isUsablePageTab(tab) {
+      return Boolean(tab?.id) && bridge.isReadable(tab.url);
     }
 
     function renderRecent() {
@@ -225,6 +261,7 @@ export default {
     }
 
     async function run({ force = false } = {}) {
+      if (state.mode === "page") return runPageTranslation({ force });
       const text = state.text[state.mode].trim();
       if (!text) {
         cancelRun();
@@ -274,6 +311,56 @@ export default {
       }
     }
 
+    async function runPageTranslation({ force = false } = {}) {
+      try {
+        const tab = await bridge.getActiveTab();
+        if (!isUsablePageTab(tab)) {
+          showPageMessage("Open a regular website to translate this page.");
+          return;
+        }
+        state.lastPageId = `${tab.id}|${tab.url}`;
+        setPageProgress(0);
+        const res = await bridge.translatePage(tab, state.to);
+        if (!res?.ok) {
+          if (res?.rateLimited) setPageProgress(0, res.error);
+          else setPageProgress();
+          return;
+        }
+        state.pageState = res.state;
+        state.pageView = "translated";
+        renderSource();
+        setPageProgress();
+      } catch (err) {
+        setPageProgress();
+        console.error("[Lingua] page translation failed:", err);
+      }
+    }
+
+    async function setPageView(view) {
+      if (state.mode !== "page") return;
+      if (view === "translated") {
+        runPageTranslation();
+        return;
+      }
+      try {
+        const tab = await bridge.getActiveTab();
+        if (!isUsablePageTab(tab) || `${tab.id}|${tab.url}` !== state.lastPageId) return;
+        const res = await bridge.restorePage(tab);
+        if (!res?.ok) {
+          console.error("[Lingua] page restore failed:", res?.error || res?.reason);
+          showPageMessage("Lingua couldn't restore this page. Try reloading it.");
+          return;
+        }
+        state.pageState = null;
+        state.pageView = "original";
+        renderSource();
+        setPageProgress();
+      } catch (err) {
+        console.error("[Lingua] page restore failed:", err);
+        showPageMessage("Lingua couldn't restore this page. Try reloading it.");
+      }
+    }
+
     function queueRecent(src, out) {
       clearTimeout(recentTimer);
       if (src.length > 300) return;
@@ -286,36 +373,35 @@ export default {
     }
 
     // ---------- importing text from the page ----------
-    async function importPage() {
+    async function importPage({ translateIfNew = false } = {}) {
       const token = ++importToken;
-      cancelRun();
-      setResult("loading", "Reading page…");
-      const tab = await bridge.getActiveTab();
-      const res = await bridge.getPageText(tab);
-      if (token !== importToken || state.mode !== "page") return;
-
-      if (!res?.ok) {
-        state.text.page = "";
-        state.pageMeta = null;
-        state.result = "";
-        state.lastPageId = "";
+      try {
+        const tab = await bridge.getActiveTab();
+        if (token !== importToken || state.mode !== "page") return;
+        if (!isUsablePageTab(tab)) {
+          state.lastPageId = "";
+          state.pageState = null;
+          state.pageView = "original";
+          renderSource();
+          showPageMessage("Open a regular website to translate this page.");
+          return;
+        }
+        const res = await bridge.getPageState(tab);
+        if (token !== importToken || state.mode !== "page") return;
+        const pageState = res?.ok && res.state && typeof res.state.url === "string" && typeof res.state.view === "string"
+          ? res.state
+          : null;
+        state.lastPageId = `${tab.id}|${tab.url}`;
+        state.pageState = pageState?.url === tab.url && pageState.view === "translated" ? pageState : null;
+        state.pageView = state.pageState ? "translated" : "original";
         renderSource();
-        setResult("notice", PAGE_PROBLEMS[res?.reason] ?? PAGE_PROBLEMS.unreachable);
-        return;
+        setPageProgress();
+        if (translateIfNew && !state.pageState) runPageTranslation();
+      } catch (err) {
+        if (token !== importToken || state.mode !== "page") return;
+        console.error("[Lingua] couldn't read page translation state:", err);
+        showPageMessage("Lingua couldn't read this page. Try reloading it.");
       }
-      const { text, truncated } = cutAtParagraph((res.text || "").trim(), LIMITS.page);
-      if (!text) {
-        state.text.page = "";
-        state.pageMeta = null;
-        renderSource();
-        setResult("notice", PAGE_PROBLEMS.empty);
-        return;
-      }
-      state.lastPageId = `${tab.id}|${tab.url}`;
-      state.text.page = text;
-      state.pageMeta = { title: res.title, truncated };
-      renderSource();
-      scheduleRun(0);
     }
 
     function setPhrase(text) {
@@ -363,8 +449,11 @@ export default {
     el.to.addEventListener("change", () => {
       state.to = el.to.value;
       persist();
-      scheduleRun(0);
+      if (state.mode === "page") runPageTranslation();
+      else scheduleRun(0);
     });
+    el.translatedView.addEventListener("click", () => setPageView("translated"));
+    el.originalView.addEventListener("click", () => setPageView("original"));
     el.swap.addEventListener("click", () => {
       const newTo = state.from === AUTO_CODE ? state.detected : state.from;
       if (!newTo || !isSupported(newTo)) {
@@ -428,9 +517,25 @@ export default {
     bridge.watchActiveTab((tab) => {
       if (!state.active || !tab) return;
       if (state.mode === "page") {
-        if (state.lastPageId !== `${tab.id}|${tab.url}`) importPage();
+        importPage();
       } else {
         importSelection();
+      }
+    });
+
+    bridge.watchPageState((message) => {
+      if (!state.active || state.mode !== "page") return;
+      const tabId = Number(state.lastPageId.split("|")[0]);
+      if (message.tabId !== tabId) return;
+      if (message.type === "lingua/page-progress") {
+        setPageProgress(message.percent);
+      } else if (message.type === "lingua/page-state") {
+        state.pageState = message.state?.view === "translated" ? message.state : null;
+        state.pageView = state.pageState ? "translated" : "original";
+        renderSource();
+        setPageProgress();
+      } else if (message.type === "lingua/page-error" && message.rateLimited) {
+        setPageProgress(0, message.message);
       }
     });
 
@@ -445,7 +550,7 @@ export default {
     return {
       activate() {
         state.active = true;
-        if (state.mode === "page") importPage();
+        if (state.mode === "page") importPage({ translateIfNew: !state.lastPageId });
         else importSelection().finally(() => scheduleRun(0));
       },
       deactivate() {
