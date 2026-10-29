@@ -12,6 +12,9 @@
     SELECTION: "lingua/selection-changed",
     GET_SELECTION: "lingua/get-selection",
     GET_PAGE_TEXT: "lingua/get-page-text",
+    GET_PAGE_SEGMENTS: "lingua/get-page-segments",
+    APPLY_PAGE_TRANSLATION: "lingua/apply-page-translation",
+    RESTORE_PAGE_TEXT: "lingua/restore-page-text",
   };
   const MAX_PAGE_CHARS = 60000;
 
@@ -51,8 +54,9 @@
   // ---------- Page text ----------
   const BLOCKS = "p,h1,h2,h3,h4,h5,h6,li,blockquote,figcaption,td,th,dt,dd,pre,summary";
   const SKIP =
-    'nav,footer,aside,script,style,noscript,template,[aria-hidden="true"],' +
-    '[role="navigation"],[role="complementary"],[role="contentinfo"]';
+    'script,style,noscript,template,[aria-hidden="true"],pre,code,svg,' +
+    'input,textarea,select,option,[contenteditable],[role="textbox"],[hidden]';
+  let pageSegments = new Map();
 
   function isVisible(el) {
     return typeof el.checkVisibility === "function"
@@ -61,11 +65,8 @@
   }
 
   function pickRoot() {
-    const candidates = [...document.querySelectorAll('article, main, [role="main"]')];
-    if (!candidates.length) return document.body;
-    return candidates.reduce((best, el) =>
-      (el.textContent || "").length > (best.textContent || "").length ? el : best
-    );
+    // Full Page translates visible text across the page, including menus and controls.
+    return document.body;
   }
 
   function extractPageText() {
@@ -85,6 +86,64 @@
     return text.slice(0, MAX_PAGE_CHARS);
   }
 
+  // Page translation changes only Text nodes. Their containing elements (including links)
+  // remain in place, so hrefs, event listeners, and normal page interaction are preserved.
+  function restorePageText() {
+    let restored = 0;
+    for (const { node, original } of pageSegments.values()) {
+      if (node.isConnected) {
+        node.nodeValue = original;
+        restored++;
+      }
+    }
+    return restored;
+  }
+
+  function collectPageSegments(maxChars = 12000) {
+    restorePageText();
+    const root = pickRoot();
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    const segments = [];
+    let used = 0;
+    let id = 0;
+    let node;
+
+    while ((node = walker.nextNode()) && used < maxChars) {
+      const parent = node.parentElement;
+      const original = node.nodeValue || "";
+      if (!parent || !original.trim() || parent.closest(SKIP) || !isVisible(parent)) continue;
+
+      const text = original.slice(0, Math.max(0, maxChars - used));
+      if (!text.trim()) continue;
+      const segmentId = String(++id);
+      pageSegments.set(segmentId, { node, original, source: text });
+      segments.push({ id: segmentId, text });
+      used += text.length;
+    }
+
+    return {
+      ok: true,
+      segments,
+      title: document.title,
+      url: location.href,
+      lang: document.documentElement.lang || "",
+      truncated: used >= maxChars,
+    };
+  }
+
+  function applyPageTranslation(translations) {
+    let applied = 0;
+    for (const item of translations || []) {
+      const entry = pageSegments.get(String(item?.id));
+      if (!entry?.node?.isConnected || typeof item?.text !== "string") continue;
+      // Do not overwrite a text node changed by the page while Lingua was translating.
+      if (entry.node.nodeValue !== entry.original) continue;
+      entry.node.nodeValue = item.text + entry.original.slice(entry.source.length);
+      applied++;
+    }
+    return { ok: true, applied, total: pageSegments.size };
+  }
+
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     if (msg?.type === MSG.GET_PAGE_TEXT) {
       sendResponse({
@@ -96,6 +155,12 @@
       });
     } else if (msg?.type === MSG.GET_SELECTION) {
       sendResponse({ ok: true, text: readSelection() });
+    } else if (msg?.type === MSG.GET_PAGE_SEGMENTS) {
+      sendResponse(collectPageSegments(Number(msg.maxChars) || 12000));
+    } else if (msg?.type === MSG.APPLY_PAGE_TRANSLATION) {
+      sendResponse(applyPageTranslation(msg.translations));
+    } else if (msg?.type === MSG.RESTORE_PAGE_TEXT) {
+      sendResponse({ ok: true, restored: restorePageText() });
     }
     // Synchronous responses only, so no `return true`.
   });

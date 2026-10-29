@@ -16,7 +16,12 @@ export const myMemory = {
     for (const piece of pieces) {
       const params = new URLSearchParams({ q: piece.text, langpair: pair });
       const res = await fetch(`${ENDPOINT}?${params}`, { signal });
-      if (!res.ok) throw new Error(`MyMemory answered ${res.status}`);
+      if (!res.ok) {
+        const err = new Error(`MyMemory answered ${res.status}`);
+        err.status = res.status;
+        err.retryAfter = res.headers.get("Retry-After");
+        throw err;
+      }
       const data = await res.json();
       if (Number(data.responseStatus) !== 200) throw new Error(data.responseDetails || "MyMemory failed");
       out += data.responseData.translatedText + piece.sep;

@@ -14,7 +14,12 @@ export const googleFree = {
   async translate({ text, from, to, signal }) {
     const params = new URLSearchParams({ client: "gtx", sl: from, tl: to, dt: "t", dj: "1", q: text });
     const res = await fetch(`${ENDPOINT}?${params}`, { signal });
-    if (!res.ok) throw new Error(`Google Translate answered ${res.status}`);
+    if (!res.ok) {
+      const err = new Error(`Google Translate answered ${res.status}`);
+      err.status = res.status;
+      err.retryAfter = res.headers.get("Retry-After");
+      throw err;
+    }
     const data = await res.json();
     const translated = (data.sentences ?? []).map((s) => s.trans ?? "").join("");
     if (!translated && text.trim()) throw new Error("Google Translate returned nothing");
