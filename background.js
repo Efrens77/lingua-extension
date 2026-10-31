@@ -7,6 +7,7 @@ const PAGE_STATE_KEY = "translate.page-state";
 const runs = new Map(); // tab id -> AbortController
 const pageCache = new Map(); // current worker lifetime: tab + URL + source + target + text
 const BATCH_MAX_CHARS = 400;
+let offscreenReady = null;
 
 function enableSidePanelOnActionClick() {
   chrome.sidePanel
@@ -51,6 +52,26 @@ async function sendToTab(tab, message) {
   }
 }
 
+async function ensureOffscreenDocument() {
+  if (await chrome.offscreen.hasDocument()) return;
+  offscreenReady ??= chrome.offscreen.createDocument({
+    url: "offscreen.html",
+    reasons: ["DOM_PARSER"],
+    justification: "Run Chrome's document-only on-device Translator and Language Detector APIs.",
+  }).finally(() => { offscreenReady = null; });
+  await offscreenReady;
+}
+
+async function translateWithChromeDocument(request) {
+  try {
+    await ensureOffscreenDocument();
+    return await chrome.runtime.sendMessage({ type: "lingua/chrome-translate", request });
+  } catch (err) {
+    console.warn("[Lingua] Chrome document translation unavailable:", err);
+    return { ok: false, reason: "unavailable" };
+  }
+}
+
 function cacheKey(tab, to, text) {
   return `${tab.id}\u0001${tab.url}\u0001auto\u0001${to}\u0001${text}`;
 }
@@ -82,7 +103,7 @@ function splitBatch(text, expected) {
   return parts.length === expected ? parts : null;
 }
 
-async function translateSegments(segments, tab, to, signal, onProgress) {
+async function translateSegments(segments, tab, to, sourceLanguage, signal, onProgress) {
   const byText = new Map();
   for (const segment of segments) {
     const entry = byText.get(segment.text) ?? { text: segment.text, ids: [] };
@@ -104,7 +125,11 @@ async function translateSegments(segments, tab, to, signal, onProgress) {
     else pending.push(entry);
   }
   for (const batch of makeBatches(pending)) {
-    const result = await translate({ text: joinBatch(batch), from: "auto", to, signal, concurrency: 1 });
+    const batchText = joinBatch(batch);
+    const chromeResult = await translateWithChromeDocument({ text: batchText, from: sourceLanguage, to });
+    const result = chromeResult.ok
+      ? chromeResult
+      : await translate({ text: batchText, from: sourceLanguage || "auto", to, signal, concurrency: 1, preferChrome: false });
     detectedFrom ??= result.detectedFrom;
     const pieces = splitBatch(result.text, batch.length);
     if (pieces) {
@@ -115,7 +140,10 @@ async function translateSegments(segments, tab, to, signal, onProgress) {
     } else {
       // If a provider changes a delimiter, fall back safely to individual queued requests.
       for (const entry of batch) {
-        const single = await translate({ text: entry.text, from: "auto", to, signal, concurrency: 1 });
+        const chromeSingle = await translateWithChromeDocument({ text: entry.text, from: sourceLanguage, to });
+        const single = chromeSingle.ok
+          ? chromeSingle
+          : await translate({ text: entry.text, from: sourceLanguage || "auto", to, signal, concurrency: 1, preferChrome: false });
         detectedFrom ??= single.detectedFrom;
         pageCache.set(cacheKey(tab, to, entry.text), { text: single.text });
         finish(entry, single.text);
@@ -139,7 +167,7 @@ async function translatePage(tabId, to) {
     const collected = await sendToTab(tab, { type: MSG.GET_PAGE_SEGMENTS, maxChars: LIMITS.page });
     if (!collected?.ok || !collected.segments?.length) throw new Error("This page doesn't have readable text");
     const { translations, detectedFrom } = await translateSegments(
-      collected.segments, tab, to, controller.signal,
+      collected.segments, tab, to, collected.lang || "auto", controller.signal,
       (done, total) => publish({ type: MSG.PAGE_PROGRESS, tabId, percent: Math.round((done / total) * 100) })
     );
     if (runs.get(tabId) !== controller) throw new DOMException("Aborted", "AbortError");
@@ -150,8 +178,15 @@ async function translatePage(tabId, to) {
     publish({ type: MSG.PAGE_STATE, tabId, state });
     return { ok: true, state };
   } catch (err) {
-    if (err?.rateLimited) {
-      publish({ type: MSG.PAGE_ERROR, tabId, message: err.message, rateLimited: true });
+    if (err?.name !== "AbortError") {
+      publish({
+        type: MSG.PAGE_ERROR,
+        tabId,
+        message: err?.rateLimited
+          ? "Translation service limit reached. Please wait a moment and try again."
+          : "Translation is temporarily unavailable. Please try again shortly.",
+        rateLimited: Boolean(err?.rateLimited),
+      });
     }
     throw err;
   } finally {

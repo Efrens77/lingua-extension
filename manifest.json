@@ -3,7 +3,7 @@
   "name": "Lingua",
   "version": "0.1",
   "description": "Translate the page you're reading or just the phrase you highlight, in a side panel that stays open while you browse.",
-  "permissions": ["sidePanel", "storage", "scripting"],
+  "permissions": ["sidePanel", "storage", "scripting", "offscreen"],
   "host_permissions": ["<all_urls>"],
   "background": { "service_worker": "background.js", "type": "module" },
   "action": {

@@ -4,6 +4,7 @@
 import { splitText } from "./text-splitter.js";
 import { googleFree } from "./providers/google-free.js";
 import { myMemory } from "./providers/mymemory.js";
+import { translateWithChrome } from "./chrome.js";
 
 // Order matters: first provider is tried first, the rest are fallbacks.
 export const PROVIDERS = [googleFree, myMemory];
@@ -75,7 +76,16 @@ export async function translate({
   onProgress,
   providers = PROVIDERS,
   concurrency = 3,
+  preferChrome = true,
+  allowChromeDownload = false,
+  onModelProgress,
 }) {
+  if (preferChrome) {
+    const chromeResult = await translateWithChrome({
+      text, from, to, allowDownload: allowChromeDownload, onDownloadProgress: onModelProgress,
+    });
+    if (chromeResult.ok) return chromeResult;
+  }
   const chunks = splitText(text, providers[0].maxChunk);
   const results = new Array(chunks.length);
   let detectedFrom = null;

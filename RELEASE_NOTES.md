@@ -39,13 +39,14 @@ Select *Phrase*, then highlight text on the page with your cursor. It appears in
 - Full page translation now persists per-tab state across panel closing and same-URL reloads, reports percentage progress, and translates safe visible labels in links, buttons, tabs, and menus
 - Full page translation now batches repeated page text, uses a queued request flow, and waits before retrying temporary translation-service limits
 - Full page translation now handles missing page state, unsupported pages, and temporary provider limits without leaving the panel in an error state
+- Lingua now prefers Chrome's on-device Translator and Language Detector APIs when supported, with the existing cloud providers as fallbacks
 
 ## Known limitations
 
 - Pages open in Chrome's built-in PDF viewer, `chrome://` pages and the Chrome Web Store can't be read by any extension.
 - Single-page apps that change content without reloading may need the refresh icon.
 - Text inside embedded frames (iframes) isn't read.
-- Translation uses Google's free web endpoint, with MyMemory as a backup. It's unofficial, so it can be slow or rate-limited. If you see "Couldn't translate right now", wait a moment and press *Try again*.
+- Lingua prefers Chrome's on-device translation when supported. When it is unavailable, text is sent to Google's free endpoint, with MyMemory as a backup; these cloud services can be slow or rate-limited.
 - Translations appear in the side panel. They don't replace the text on the page yet.
 
 ## Feedback
