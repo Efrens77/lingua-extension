@@ -291,6 +291,10 @@ export default {
           from: state.from,
           to: state.to,
           signal: controller.signal,
+          allowChromeDownload: Boolean(navigator.userActivation?.isActive),
+          onModelProgress: (percent) => {
+            if (id === state.runId) el.status.textContent = `Downloading language model… ${percent}%`;
+          },
           onProgress: ({ done, total }) => {
             if (id === state.runId && total > 1) el.status.textContent = `Translating… ${done}/${total}`;
           },
@@ -307,7 +311,8 @@ export default {
         state.result = "";
         state.lastKey = "";
         const offline = navigator.onLine === false;
-        setResult("error", offline ? "You're offline." : `Couldn't translate right now. ${err.message}`);
+        console.error("[Lingua] phrase translation failed:", err);
+        setResult("error", offline ? "You're offline." : "Translation is temporarily unavailable. Please try again shortly.");
       }
     }
 
@@ -322,8 +327,9 @@ export default {
         setPageProgress(0);
         const res = await bridge.translatePage(tab, state.to);
         if (!res?.ok) {
-          if (res?.rateLimited) setPageProgress(0, res.error);
-          else setPageProgress();
+          setPageProgress(0, res?.rateLimited
+            ? "Translation service limit reached. Please wait a moment and try again."
+            : "Translation is temporarily unavailable. Please try again shortly.");
           return;
         }
         state.pageState = res.state;
@@ -534,7 +540,7 @@ export default {
         state.pageView = state.pageState ? "translated" : "original";
         renderSource();
         setPageProgress();
-      } else if (message.type === "lingua/page-error" && message.rateLimited) {
+      } else if (message.type === "lingua/page-error") {
         setPageProgress(0, message.message);
       }
     });
