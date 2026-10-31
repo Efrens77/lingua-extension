@@ -5,7 +5,8 @@ import * as storage from "./storage.js";
 import * as languages from "./languages.js";
 import * as config from "./config.js";
 import { translate } from "./translation/index.js";
+import { createI18n } from "./i18n.js";
 
-export function createContext() {
-  return { bridge, storage, languages, config, translator: { translate } };
+export async function createContext() {
+  return { bridge, storage, languages, config, translator: { translate }, i18n: await createI18n() };
 }

@@ -40,6 +40,8 @@ Select *Phrase*, then highlight text on the page with your cursor. It appears in
 - Full page translation now batches repeated page text, uses a queued request flow, and waits before retrying temporary translation-service limits
 - Full page translation now handles missing page state, unsupported pages, and temporary provider limits without leaving the panel in an error state
 - Lingua now prefers Chrome's on-device Translator and Language Detector APIs when supported, with the existing cloud providers as fallbacks
+- Added a compact Settings panel with interface language, text size, dark mode, and feedback controls
+- Settings now localize translation language names and offer a smooth 80–140% text-size slider
 
 ## Known limitations
 

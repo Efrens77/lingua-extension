@@ -12,12 +12,16 @@
   <main id="panels"></main>
 
   <footer class="app-footer">
-    <span class="privacy-note">On-device translation is used when available; cloud fallback providers may receive text.</span>
-    <button type="button" class="theme-toggle" id="theme-toggle" aria-pressed="false">
-      Dark mode
-    </button>
-    <a id="feedback-link" href="#" target="_blank" rel="noopener">Send feedback</a>
+    <button type="button" class="settings-button" id="settings-button" aria-expanded="false" aria-controls="settings-sheet">⚙ <span>Settings</span></button>
   </footer>
+
+  <section class="settings-sheet" id="settings-sheet" role="dialog" aria-modal="false" aria-labelledby="settings-title" hidden>
+    <div class="settings-head"><h2 id="settings-title">Settings</h2><button type="button" class="icon-btn" id="settings-close" aria-label="Close settings">×</button></div>
+    <label class="settings-field"><span id="interface-language-label">Interface language</span><select id="interface-language"></select></label>
+    <label class="settings-field"><span id="text-size-label">Text size</span><input id="text-size" type="range" min="0.8" max="1.4" step="0.01" value="1" /><span class="size-labels"><span id="smaller-label">Smaller</span><span id="larger-label">Larger</span></span></label>
+    <div class="settings-actions"><button type="button" class="theme-toggle" id="theme-toggle" aria-pressed="false">Dark mode</button></div>
+    <a id="feedback-link" href="#" target="_blank" rel="noopener">Send feedback</a>
+  </section>
 
   <script type="module" src="sidepanel.js"></script>
 </body>
