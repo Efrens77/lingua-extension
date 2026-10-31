@@ -88,19 +88,42 @@ function defaultTarget() {
   return code !== "en" && isSupported(code) ? code : "es";
 }
 
-function optionHtml(list, withAuto) {
+function optionHtml(list, withAuto, i18n) {
   const auto = withAuto ? `<option value="${AUTO_CODE}">Detect language</option>` : "";
-  return auto + list.map((l) => `<option value="${l.code}">${l.name}</option>`).join("");
+  return auto + list.map((l) => `<option value="${l.code}">${i18n.languageName(l.code, l.name)}</option>`).join("");
 }
 
 export default {
   async mount(root, ctx) {
-    const { bridge, storage, translator } = ctx;
+    const { bridge, storage, translator, i18n } = ctx;
     loadStylesheet();
     root.innerHTML = TEMPLATE;
 
     const el = Object.fromEntries([...root.querySelectorAll("[data-el]")].map((n) => [n.dataset.el, n]));
     const modeButtons = [...root.querySelectorAll("[data-mode]")];
+
+    function t(key) { return i18n.t(key); }
+    function hintFor(mode) { return mode === "page" ? t("pageHint") : t("phraseHint"); }
+    function localize() {
+      root.querySelector(".card-title").textContent = t("translateMode");
+      root.querySelector('[data-mode="page"]').textContent = t("fullPage");
+      root.querySelector('[data-mode="phrase"]').textContent = t("phrase");
+      el.from.setAttribute("aria-label", t("from"));
+      el.to.setAttribute("aria-label", t("to"));
+      el.swap.setAttribute("aria-label", t("from"));
+      el.originalView.textContent = t("original");
+      el.translatedView.textContent = t("translated");
+      root.querySelector(".field-label").textContent = t("originalText");
+      el.refresh.setAttribute("aria-label", t("refresh")); el.refresh.title = t("refresh");
+      el.clear.setAttribute("aria-label", t("clear")); el.clear.title = t("clear");
+      el.copy.setAttribute("aria-label", t("copy")); el.copy.title = t("copy");
+      el.speak.setAttribute("aria-label", t("listen")); el.speak.title = t("listen");
+      root.querySelector(".section-label").textContent = t("recent");
+      el.hint.textContent = hintFor(state.mode);
+      renderLanguageOptions();
+      renderSource();
+      setResult(state.result ? "done" : "empty");
+    }
 
     const saved = await storage.get(PREFS_KEY, {});
     const state = {
@@ -128,13 +151,18 @@ export default {
     const persist = () => storage.set(PREFS_KEY, { mode: state.mode, from: state.from, to: state.to });
 
     // ---------- rendering ----------
-    el.from.innerHTML = optionHtml(LANGUAGES, true);
-    el.to.innerHTML = optionHtml(LANGUAGES, false);
-
     function syncSelects() {
       el.from.value = state.from;
       el.to.value = state.to;
     }
+
+    function renderLanguageOptions() {
+      el.from.innerHTML = optionHtml(LANGUAGES, true, i18n);
+      el.to.innerHTML = optionHtml(LANGUAGES, false, i18n);
+      syncSelects();
+    }
+
+    renderLanguageOptions();
 
     function renderPageControls() {
       const isPage = state.mode === "page";
@@ -168,7 +196,7 @@ export default {
       }
 
       el.detected.hidden = !state.detected;
-      if (state.detected) el.detected.textContent = `Detected: ${nameOf(state.detected)}`;
+      if (state.detected) el.detected.textContent = `${t("detected")} ${i18n.languageName(state.detected, nameOf(state.detected))}`;
       renderPageControls();
     }
 
@@ -182,7 +210,7 @@ export default {
       el.resultCard.dataset.kind = kind;
       const showText = kind === "done" || kind === "loading";
       el.resultText.textContent =
-        kind === "empty" ? "The translation will appear here."
+        kind === "empty" ? t("result")
         : kind === "notice" ? message
         : showText ? state.result
         : "";
@@ -206,7 +234,7 @@ export default {
       if (percent === null) return;
       el.resultCard.dataset.kind = "loading";
       el.resultText.textContent = "";
-      el.status.textContent = message || `Translating page… ${percent}%`;
+      el.status.textContent = message || `${t("translating")} ${percent}%`;
       el.actions.hidden = true;
     }
 
@@ -293,7 +321,7 @@ export default {
           signal: controller.signal,
           allowChromeDownload: Boolean(navigator.userActivation?.isActive),
           onModelProgress: (percent) => {
-            if (id === state.runId) el.status.textContent = `Downloading language model… ${percent}%`;
+            if (id === state.runId) el.status.textContent = `${t("downloading")} ${percent}%`;
           },
           onProgress: ({ done, total }) => {
             if (id === state.runId && total > 1) el.status.textContent = `Translating… ${done}/${total}`;
@@ -312,7 +340,7 @@ export default {
         state.lastKey = "";
         const offline = navigator.onLine === false;
         console.error("[Lingua] phrase translation failed:", err);
-        setResult("error", offline ? "You're offline." : "Translation is temporarily unavailable. Please try again shortly.");
+        setResult("error", offline ? "You're offline." : t("unavailable"));
       }
     }
 
@@ -320,7 +348,7 @@ export default {
       try {
         const tab = await bridge.getActiveTab();
         if (!isUsablePageTab(tab)) {
-          showPageMessage("Open a regular website to translate this page.");
+          showPageMessage(t("regularPage"));
           return;
         }
         state.lastPageId = `${tab.id}|${tab.url}`;
@@ -328,8 +356,8 @@ export default {
         const res = await bridge.translatePage(tab, state.to);
         if (!res?.ok) {
           setPageProgress(0, res?.rateLimited
-            ? "Translation service limit reached. Please wait a moment and try again."
-            : "Translation is temporarily unavailable. Please try again shortly.");
+            ? t("limit")
+            : t("unavailable"));
           return;
         }
         state.pageState = res.state;
@@ -389,7 +417,7 @@ export default {
           state.pageState = null;
           state.pageView = "original";
           renderSource();
-          showPageMessage("Open a regular website to translate this page.");
+          showPageMessage(t("regularPage"));
           return;
         }
         const res = await bridge.getPageState(tab);
@@ -427,7 +455,7 @@ export default {
     function applyMode(mode, { import: doImport = true } = {}) {
       state.mode = mode;
       for (const b of modeButtons) b.setAttribute("aria-checked", String(b.dataset.mode === mode));
-      el.hint.textContent = HINTS[mode];
+      el.hint.textContent = hintFor(mode);
       state.result = "";
       state.lastKey = "";
       state.detected = null;
@@ -548,10 +576,12 @@ export default {
     // ---------- initial paint ----------
     syncSelects();
     renderRecent();
-    el.hint.textContent = HINTS[state.mode];
+    el.hint.textContent = hintFor(state.mode);
     for (const b of modeButtons) b.setAttribute("aria-checked", String(b.dataset.mode === state.mode));
     renderSource();
     setResult("empty");
+    i18n.subscribe(localize);
+    localize();
 
     return {
       activate() {
