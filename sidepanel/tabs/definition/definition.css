@@ -1,0 +1,29 @@
+.definition-intro, .definition-result { padding: 12px 14px; }
+.definition-label { display: block; margin: 12px 0 6px; font-size: 0.8125rem; font-weight: 600; color: var(--text-2); }
+.definition-input-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+.definition-language-choice { margin-top: 12px; }
+.definition-language-choice label { display: block; margin-bottom: 6px; font-size: 0.8125rem; font-weight: 600; color: var(--text-2); }
+.definition-language-choice select {
+  min-width: 0; border: 1px solid var(--border); border-radius: 10px; padding: 9px 10px; background: var(--bg);
+}
+.definition-input-row input, .definition-input-row button {
+  min-width: 0; border: 1px solid var(--border); border-radius: 10px; padding: 9px 10px; background: var(--bg);
+}
+.definition-input-row button { background: var(--teal); border-color: var(--teal); color: #fff; font-weight: 700; }
+.definition-message { margin: 0; color: var(--muted); }
+.definition-word { margin: 0; font-size: 1.5rem; line-height: 1.2; overflow-wrap: anywhere; }
+.definition-meta { margin: 5px 0 0; font-size: 0.8125rem; color: var(--muted); }
+.definition-gloss, .definition-field { margin: 12px 0 0; color: var(--text-2); }
+.definition-gloss { font-weight: 600; }
+.definition-entry { margin-top: 16px; }
+.definition-entry h3 { margin: 0 0 6px; color: var(--teal-strong); font-size: 1rem; }
+.definition-entry h4 { margin: 12px 0 4px; font-size: 0.8125rem; color: var(--text-2); }
+.definition-entry ol { margin: 0; padding-left: 1.4rem; }
+.definition-entry li + li { margin-top: 5px; }
+.definition-example { margin: 0; font-style: italic; }
+.definition-example-translation { margin: 4px 0 0; color: var(--text-2); }
+.definition-attribution { margin: 18px 0 0; font-size: 0.71875rem; }
+.definition-attribution a { color: var(--teal-strong); }
+@media (max-width: 300px) {
+  .definition-input-row { grid-template-columns: 1fr; }
+}

@@ -30,6 +30,11 @@ function monitor(onProgress) {
 }
 
 export async function detectLanguage(text, { allowDownload = false, onDownloadProgress } = {}) {
+  const result = await detectLanguageDetails(text, { allowDownload, onDownloadProgress });
+  return result?.code || null;
+}
+
+export async function detectLanguageDetails(text, { allowDownload = false, onDownloadProgress } = {}) {
   if (!apiAvailable("LanguageDetector") || !text?.trim()) return null;
   try {
     const status = await globalThis.LanguageDetector.availability();
@@ -37,7 +42,8 @@ export async function detectLanguage(text, { allowDownload = false, onDownloadPr
     detectorPromise ??= globalThis.LanguageDetector.create(monitor(onDownloadProgress));
     const detector = await detectorPromise;
     const [best] = await detector.detect(text);
-    return normalizeLanguage(best?.detectedLanguage);
+    const code = normalizeLanguage(best?.detectedLanguage);
+    return code ? { code, confidence: Number(best?.confidence) || 0 } : null;
   } catch (err) {
     console.warn("[Lingua] Chrome language detection unavailable:", err);
     return null;

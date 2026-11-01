@@ -1,3 +1,20 @@
+# Lingua v0.2 (Alpha)
+
+## New in 0.2
+
+- Added a Definition tab for a highlighted or typed single word.
+- Shows the original word, detected language, phonetic spelling, part of speech, definitions, and examples when Wiktionary provides them.
+- Uses Lingua’s interface language for labels and translated definition content, while retaining the original word and source-language phonetics.
+- Links each result to its Wiktionary source and credits Wiktionary content under CC BY-SA.
+- Definition lookup now preserves the word’s original capitalization, supports typed-word lookup, and uses Free Dictionary API first for English before falling back to Wiktionary when needed.
+- Typed words with uncertain automatic detection now probe dictionary sources and ask for a source language only when more than one valid language entry is found.
+- The Definition tab is now named Define and keeps its lower result area collapsed until it has a definition, loading indicator, or helpful message to show.
+- Define now prompts users to highlight or type a word, and filters incomplete Wiktionary senses so blank numbered definitions are not shown.
+
+## Privacy and data
+
+For a Definition lookup, the selected or typed word may be sent to Free Dictionary API for English and to the official Wiktionary API when needed; non-English lookup uses Wiktionary. When displayed definition content needs conversion to the selected interface language, Lingua uses its existing translation-provider strategy. No lookup data is sent when no valid single word is provided.
+
 # Lingua v0.1 (Alpha)
 
 First installable preview. **Translate** is the only tab that works so far.

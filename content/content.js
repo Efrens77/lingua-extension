@@ -43,7 +43,9 @@
       if (text === lastSent) return;
       lastSent = text;
       try {
-        chrome.runtime.sendMessage({ type: MSG.SELECTION, text, url: location.href }).catch(() => {});
+        chrome.runtime.sendMessage({
+          type: MSG.SELECTION, text, url: location.href, lang: document.documentElement.lang || "",
+        }).catch(() => {});
       } catch (_) { /* extension was reloaded; this script is stale */ }
     }, 250);
   }
@@ -154,7 +156,7 @@
         lang: document.documentElement.lang || "",
       });
     } else if (msg?.type === MSG.GET_SELECTION) {
-      sendResponse({ ok: true, text: readSelection() });
+      sendResponse({ ok: true, text: readSelection(), lang: document.documentElement.lang || "" });
     } else if (msg?.type === MSG.GET_PAGE_SEGMENTS) {
       sendResponse(collectPageSegments(Number(msg.maxChars) || 12000));
     } else if (msg?.type === MSG.APPLY_PAGE_TRANSLATION) {
