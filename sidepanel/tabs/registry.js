@@ -13,4 +13,10 @@ export const TABS = [
     enabled: true,
     load: () => import("./translate/translate.js"),
   },
+  {
+    id: "definition",
+    label: "Definition",
+    enabled: true,
+    load: () => import("./definition/definition.js"),
+  },
 ];

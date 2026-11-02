@@ -92,7 +92,9 @@ function renderTabBar() {
     btn.setAttribute("role", "tab");
     btn.setAttribute("aria-controls", `panel-${tab.id}`);
     btn.setAttribute("aria-selected", "false");
-    btn.textContent = tab.id === "translate" ? ctx.i18n.t("translateMode").replace(/ mode$/i, "") : tab.label;
+    btn.textContent = tab.id === "translate"
+      ? ctx.i18n.t("translateMode").replace(/ mode$/i, "")
+      : tab.id === "definition" ? ctx.i18n.t("define") : tab.label;
     if (!tab.enabled) {
       btn.disabled = true;
       btn.title = "Coming soon";

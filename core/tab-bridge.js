@@ -83,7 +83,7 @@ export function getSelectionText(tab) {
 /** cb(text, tab) fires whenever the user highlights something in the active tab. */
 export function watchSelection(cb) {
   const handler = (msg, sender) => {
-    if (msg?.type === MSG.SELECTION && sender.tab?.active) cb(msg.text ?? "", sender.tab);
+    if (msg?.type === MSG.SELECTION && sender.tab?.active) cb(msg.text ?? "", sender.tab, { lang: msg.lang || "" });
   };
   chrome.runtime.onMessage.addListener(handler);
   return () => chrome.runtime.onMessage.removeListener(handler);

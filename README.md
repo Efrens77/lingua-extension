@@ -1,8 +1,8 @@
 # Lingua (Chrome extension)
 
-Translate the page you're reading, or just the phrase you highlight, in a side panel that stays open while you browse.
+Translate the page you're reading, translate a highlighted phrase, or look up one selected word in a side panel that stays open while you browse.
 
-Status: **Alpha v0.1**. Only the Translate tab is built. See [RELEASE_NOTES.md](RELEASE_NOTES.md) for install and usage instructions.
+Status: **Alpha v0.2**. Translate and Definition tabs are available. See [RELEASE_NOTES.md](RELEASE_NOTES.md) for install and usage instructions.
 
 ## Run it locally
 
@@ -32,6 +32,7 @@ sidepanel/
   index.html, sidepanel.js, sidepanel.css   Shell: tab bar + lazy tab loader
   tabs/registry.js       The list of tabs
   tabs/translate/        The Translate tab (UI + state)
+  tabs/definition/       The Definition tab (UI + state)
 ```
 
 ## Adding a tab

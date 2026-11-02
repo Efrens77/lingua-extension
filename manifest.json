@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Lingua",
-  "version": "0.1",
-  "description": "Translate the page you're reading or just the phrase you highlight, in a side panel that stays open while you browse.",
+  "version": "0.2.0",
+  "description": "Translate pages and phrases, or look up a selected word, in a side panel that stays open while you browse.",
   "permissions": ["sidePanel", "storage", "scripting", "offscreen"],
   "host_permissions": ["<all_urls>"],
   "background": { "service_worker": "background.js", "type": "module" },
