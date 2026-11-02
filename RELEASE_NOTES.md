@@ -10,6 +10,8 @@
 - Typed words with uncertain automatic detection now probe dictionary sources and ask for a source language only when more than one valid language entry is found.
 - The Definition tab is now named Define and keeps its lower result area collapsed until it has a definition, loading indicator, or helpful message to show.
 - Define now prompts users to highlight or type a word, and filters incomplete Wiktionary senses so blank numbered definitions are not shown.
+- Define now shows provider-supplied synonyms as accessible chips that open that synonym’s definition in place.
+- Define results now keep examples with their source definition and render one final Synonyms section after all parts of speech.
 
 ## Privacy and data
 

@@ -83,6 +83,45 @@ function parseExample(line) {
   return meaningful(example) ? example : "";
 }
 
+function cleanSynonym(value, selectedWord) {
+  const text = plain(String(value || "")
+    .replace(/\{\{(?:l|m|link)\|[^|}]+\|([^|}]+)(?:\|[^}]*)?\}\}/gi, "$1"));
+  const lookupWord = /^[\p{L}\p{M}]+(?:['’-][\p{L}\p{M}]+)*$/u.test(text);
+  if (!meaningful(text) || !lookupWord || text.toLocaleLowerCase() === String(selectedWord).toLocaleLowerCase()) return "";
+  return text;
+}
+
+function uniqueSynonyms(values, selectedWord) {
+  const seen = new Set();
+  return values.map((value) => cleanSynonym(value, selectedWord)).filter((value) => {
+    const key = value.toLocaleLowerCase();
+    if (!value || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function wikitextSynonyms(body, selectedWord) {
+  const synonymHeadings = [...body.matchAll(/^====+\s*Synonyms\s*====+\s*$/gmi)];
+  const values = [];
+  for (let index = 0; index < synonymHeadings.length; index++) {
+    const start = synonymHeadings[index].index + synonymHeadings[index][0].length;
+    const next = body.slice(start).search(/^===+\s*[^=]+?\s*===+\s*$/m);
+    const section = next < 0 ? body.slice(start) : body.slice(start, start + next);
+    for (const line of section.split("\n")) {
+      if (!/^\*+\s*/.test(line)) continue;
+      const synTemplate = /\{\{syn\|[^|}]+\|([^}]+)\}\}/gi;
+      let match;
+      while ((match = synTemplate.exec(line))) values.push(...match[1].split("|").filter((value) => !/=/.test(value)));
+      values.push(
+        ...[...line.matchAll(/\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g)].map((match) => match[1]),
+        ...[...line.matchAll(/\{\{(?:l|m|link)\|[^|}]+\|([^|}]+)/gi)].map((match) => match[1]),
+      );
+    }
+  }
+  return uniqueSynonyms(values, selectedWord);
+}
+
 function definitionText(node) {
   const copy = node.cloneNode(true);
   copy.querySelectorAll("ol,ul,dl,.mw-ref,style,script").forEach((child) => child.remove());
@@ -90,7 +129,7 @@ function definitionText(node) {
   return meaningful(text) ? text : "";
 }
 
-function htmlEntries(renderedHtml, sourceLanguage) {
+function htmlEntries(renderedHtml, sourceLanguage, selectedWord) {
   if (!renderedHtml || typeof DOMParser === "undefined") return [];
   const document = new DOMParser().parseFromString(renderedHtml, "text/html");
   const language = languageHeading(sourceLanguage);
@@ -107,48 +146,68 @@ function htmlEntries(renderedHtml, sourceLanguage) {
       node = node.nextElementSibling;
       continue;
     }
-    const definitions = [];
-    let example = "";
+    const senses = [];
+    const synonyms = [];
     node = node.nextElementSibling;
     while (node && node.tagName !== "H2" && node.tagName !== "H3") {
       if (node.tagName === "OL") {
         for (const item of node.querySelectorAll(":scope > li")) {
           const definition = definitionText(item);
-          if (definition) definitions.push(definition);
+          if (definition) senses.push({ definition, example: "" });
           for (const subSense of item.querySelectorAll(":scope > ol > li")) {
             const nested = definitionText(subSense);
-            if (nested) definitions.push(nested);
+            if (nested) senses.push({ definition: nested, example: "" });
           }
         }
-      } else if (!example && node.tagName === "DL") {
-        example = definitionText(node.querySelector("dd") || node);
+      } else if (node.tagName === "H4" && headingText(node).toLowerCase() === "synonyms") {
+        let synonymNode = node.nextElementSibling;
+        while (synonymNode && !/^H[234]$/.test(synonymNode.tagName)) {
+          if (/^(UL|OL)$/.test(synonymNode.tagName)) {
+            for (const item of synonymNode.querySelectorAll(":scope > li")) synonyms.push(definitionText(item));
+          }
+          synonymNode = synonymNode.nextElementSibling;
+        }
       }
       node = node.nextElementSibling;
     }
-    if (definitions.length) out.push({ partOfSpeech, definitions, example });
+    if (senses.length) out.push({ partOfSpeech, senses, synonyms: uniqueSynonyms(synonyms, selectedWord) });
   }
   return out;
 }
 
-export function extractWikitextEntries(section) {
+export function extractWikitextEntries(section, selectedWord = "") {
   const out = [];
-  const headings = [...section.matchAll(/^===+\s*([^=]+?)\s*===+\s*$/gmi)];
+  // Part-of-speech headings are level three; their level-four subsections
+  // (Synonyms, Usage notes, etc.) stay with the owning part of speech.
+  const headings = [...section.matchAll(/^===\s*([^=]+?)\s*===\s*$/gmi)];
   for (let index = 0; index < headings.length; index++) {
     const partOfSpeech = POS.get(plain(headings[index][1]).toLowerCase());
     if (!partOfSpeech) continue;
     const body = section.slice(headings[index].index + headings[index][0].length, headings[index + 1]?.index);
-    const definitions = [];
-    let example = "";
+    const senses = [];
+    const synonyms = wikitextSynonyms(body, selectedWord);
+    let lastSense = -1;
     for (const line of body.split("\n")) {
       const sense = /^(#+)\s+(.*)$/.exec(line);
       if (sense) {
         const definition = plain(sense[2]);
-        if (meaningful(definition)) definitions.push(definition);
-      } else if (!example && /^#:\s*/.test(line)) {
-        example = parseExample(line);
+        if (meaningful(definition)) {
+          senses.push({ definition, example: "" });
+          lastSense = senses.length - 1;
+        } else {
+          lastSense = -1;
+        }
+      } else if (lastSense >= 0 && /^#:\s*/.test(line)) {
+        // A #:-line immediately follows the Wiktionary sense it illustrates.
+        // Keep that association rather than making it a general entry example.
+        const example = parseExample(line);
+        if (example && !senses[lastSense].example) senses[lastSense].example = example;
+      } else if (line.trim()) {
+        // Do not guess an association after unrelated notes or subsections.
+        lastSense = -1;
       }
     }
-    if (definitions.length) out.push({ partOfSpeech, definitions, example });
+    if (senses.length) out.push({ partOfSpeech, senses, synonyms });
   }
   return out;
 }
@@ -201,12 +260,15 @@ export const wiktionary = {
     if (cache.has(key)) return cache.get(key);
     const source = await request(word);
     const section = languageSection(source.wikitext, sourceLanguage);
-    const extracted = htmlEntries(source.html, sourceLanguage);
+    const extracted = extractWikitextEntries(section, word);
+    const htmlFallback = extracted.length ? [] : htmlEntries(source.html, sourceLanguage, word);
+    const entriesWithSynonyms = extracted.length ? extracted : htmlFallback;
     const result = {
       word,
       sourceLanguage,
       phonetic: findPhonetic(section, sourceLanguage),
-      entries: extracted.length ? extracted : extractWikitextEntries(section),
+      entries: entriesWithSynonyms.map(({ synonyms, ...entry }) => entry),
+      synonyms: uniqueSynonyms(entriesWithSynonyms.flatMap((entry) => entry.synonyms || []), word),
       attributions: [{
         name: "Wiktionary",
         url: "https://en.wiktionary.org/wiki/" + encodeURIComponent(word),

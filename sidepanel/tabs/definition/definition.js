@@ -23,6 +23,10 @@ const TEMPLATE = `
       <p class="definition-gloss" data-el="gloss" hidden></p>
       <p class="definition-field" data-el="phonetic" hidden></p>
       <div data-el="entries"></div>
+      <section class="definition-synonym-section" data-el="synonymSection" hidden>
+        <h3 data-el="synonymsTitle"></h3>
+        <div class="definition-synonyms" data-el="synonyms"></div>
+      </section>
       <p class="definition-attribution" data-el="attribution"></p>
     </div>
   </section>
@@ -114,27 +118,41 @@ export default {
         const part = document.createElement("h3");
         part.textContent = t(entry.partOfSpeech);
         const list = document.createElement("ol");
-        for (const definition of entry.definitions) {
+        for (const sense of entry.senses) {
           const item = document.createElement("li");
-          item.textContent = definition;
+          item.append(sense.definition);
+          if (sense.example) {
+            const example = document.createElement("p");
+            example.className = "definition-example";
+            example.textContent = "“" + sense.example + "”";
+            item.append(example);
+            if (sense.exampleTranslation) {
+              const translated = document.createElement("p");
+              translated.className = "definition-example-translation";
+              translated.textContent = "“" + sense.exampleTranslation + "”";
+              item.append(translated);
+            }
+          }
           list.append(item);
         }
         section.append(part, list);
-        if (entry.example) {
-          const exampleTitle = document.createElement("h4");
-          exampleTitle.textContent = t("definitionExample");
-          const example = document.createElement("p");
-          example.className = "definition-example";
-          example.textContent = "“" + entry.example + "”";
-          section.append(exampleTitle, example);
-          if (entry.exampleTranslation) {
-            const translated = document.createElement("p");
-            translated.className = "definition-example-translation";
-            translated.textContent = "“" + entry.exampleTranslation + "”";
-            section.append(translated);
-          }
-        }
         el.entries.append(section);
+      }
+      el.synonyms.replaceChildren();
+      el.synonymSection.hidden = !result.synonyms?.length;
+      if (result.synonyms?.length) {
+        el.synonymsTitle.textContent = t("definitionSynonyms");
+        for (const synonym of result.synonyms) {
+          const chip = document.createElement("button");
+          chip.type = "button";
+          chip.className = "definition-synonym";
+          chip.textContent = synonym;
+          chip.setAttribute("aria-label", t("definitionSynonymLookup") + ": " + synonym);
+          chip.addEventListener("click", () => lookup(synonym, "", {
+            manual: true, sourceLanguage: result.sourceLanguage,
+          }));
+          el.synonyms.append(chip);
+        }
       }
       el.attribution.replaceChildren();
       for (const [index, attribution] of (result.attributions || []).entries()) {
@@ -169,15 +187,15 @@ export default {
         : await translateText(raw.word, sourceLanguage, interfaceLanguage);
       const entries = [];
       for (const entry of raw.entries) {
-        const definitions = [];
-        for (const definition of entry.definitions) {
-          definitions.push(await translateText(definition, "en", interfaceLanguage));
+        const senses = [];
+        for (const sense of entry.senses) {
+          const definition = await translateText(sense.definition, "en", interfaceLanguage);
+          const exampleTranslation = sense.example && sourceLanguage !== interfaceLanguage
+            ? await translateText(sense.example, sourceLanguage, interfaceLanguage)
+            : "";
+          senses.push({ ...sense, definition, exampleTranslation });
         }
-        const example = entry.example || "";
-        const exampleTranslation = example && sourceLanguage !== interfaceLanguage
-          ? await translateText(example, sourceLanguage, interfaceLanguage)
-          : "";
-        entries.push({ ...entry, definitions, example, exampleTranslation });
+        entries.push({ ...entry, senses });
       }
       return { ...raw, sourceLanguage, gloss, entries };
     }

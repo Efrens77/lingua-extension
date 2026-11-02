@@ -22,11 +22,12 @@ function cacheKey(word, sourceLanguage) {
 }
 
 function usable(result) {
-  return Boolean(result?.entries?.some((entry) => entry.definitions?.length));
+  return Boolean(result?.entries?.some((entry) => entry.senses?.length));
 }
 
 function complete(result) {
-  return usable(result) && Boolean(result.phonetic) && result.entries.some((entry) => entry.example);
+  return usable(result) && Boolean(result.phonetic)
+    && result.entries.some((entry) => entry.senses?.some((sense) => sense.example));
 }
 
 function mergeEnglish(primary, fallback) {
@@ -35,7 +36,13 @@ function mergeEnglish(primary, fallback) {
   const fallbackByPart = new Map(fallback.entries.map((entry) => [entry.partOfSpeech, entry]));
   const entries = primary.entries.map((entry) => {
     const additional = fallbackByPart.get(entry.partOfSpeech);
-    return { ...entry, example: entry.example || additional?.example || "" };
+    return {
+      ...entry,
+      senses: entry.senses.map((sense, index) => ({
+        ...sense,
+        example: sense.example || additional?.senses?.[index]?.example || "",
+      })),
+    };
   });
   for (const entry of fallback.entries) {
     if (!entries.some((item) => item.partOfSpeech === entry.partOfSpeech)) entries.push(entry);
@@ -44,6 +51,7 @@ function mergeEnglish(primary, fallback) {
     ...primary,
     phonetic: primary.phonetic || fallback.phonetic,
     entries,
+    synonyms: primary.synonyms?.length ? primary.synonyms : fallback.synonyms || [],
     attributions: [...(primary.attributions || []), ...(fallback.attributions || [])],
   };
 }
