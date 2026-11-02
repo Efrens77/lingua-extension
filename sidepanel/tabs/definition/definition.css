@@ -17,10 +17,19 @@
 .definition-gloss { font-weight: 600; }
 .definition-entry { margin-top: 16px; }
 .definition-entry h3 { margin: 0 0 6px; color: var(--teal-strong); font-size: 1rem; }
-.definition-entry h4 { margin: 12px 0 4px; font-size: 0.8125rem; color: var(--text-2); }
 .definition-entry ol { margin: 0; padding-left: 1.4rem; }
 .definition-entry li + li { margin-top: 5px; }
-.definition-example { margin: 0; font-style: italic; }
+.definition-synonym-section { margin-top: 18px; }
+.definition-synonym-section h3 { margin: 0 0 6px; color: var(--teal-strong); font-size: 1rem; }
+.definition-synonyms { display: flex; flex-wrap: wrap; gap: 6px; }
+.definition-synonym {
+  border: 1px solid var(--border); border-radius: 999px; padding: 5px 9px;
+  background: var(--bg); color: var(--teal-strong); font: inherit; line-height: 1.25; cursor: pointer;
+}
+.definition-synonym:hover, .definition-synonym:focus-visible {
+  border-color: var(--teal); background: color-mix(in srgb, var(--teal) 10%, var(--bg)); outline: none;
+}
+.definition-example { margin: 7px 0 0; font-style: italic; }
 .definition-example-translation { margin: 4px 0 0; color: var(--text-2); }
 .definition-attribution { margin: 18px 0 0; font-size: 0.71875rem; }
 .definition-attribution a { color: var(--teal-strong); }

@@ -30,14 +30,14 @@ const DEFINITION_STRINGS = {
 };
 
 const DEFINITION_REFINEMENT_STRINGS = {
-  en: { define: "Define", definitionWordPlaceholder: "Highlight or type a word", definitionChooseLanguage: "Which language is this word?" },
-  es: { define: "Definir", definitionWordPlaceholder: "Resalta o escribe una palabra", definitionChooseLanguage: "¿Qué idioma es esta palabra?" },
-  fr: { define: "Définir", definitionWordPlaceholder: "Surlignez ou saisissez un mot", definitionChooseLanguage: "Quelle est la langue de ce mot ?" },
-  de: { define: "Definieren", definitionWordPlaceholder: "Markieren oder geben Sie ein Wort ein", definitionChooseLanguage: "Welche Sprache hat dieses Wort?" },
-  pt: { define: "Definir", definitionWordPlaceholder: "Selecione ou digite uma palavra", definitionChooseLanguage: "Qual é o idioma desta palavra?" },
-  zh: { define: "释义", definitionWordPlaceholder: "选中或输入一个词", definitionChooseLanguage: "这个词是什么语言？" },
-  ja: { define: "調べる", definitionWordPlaceholder: "単語を選択または入力", definitionChooseLanguage: "この単語はどの言語ですか？" },
-  ko: { define: "뜻 찾기", definitionWordPlaceholder: "단어를 선택하거나 입력", definitionChooseLanguage: "이 단어는 어느 언어인가요?" },
+  en: { define: "Define", definitionWordPlaceholder: "Highlight or type a word", definitionChooseLanguage: "Which language is this word?", definitionSynonyms: "Synonyms", definitionSynonymLookup: "Look up synonym" },
+  es: { define: "Definir", definitionWordPlaceholder: "Resalta o escribe una palabra", definitionChooseLanguage: "¿Qué idioma es esta palabra?", definitionSynonyms: "Sinónimos", definitionSynonymLookup: "Buscar sinónimo" },
+  fr: { define: "Définir", definitionWordPlaceholder: "Surlignez ou saisissez un mot", definitionChooseLanguage: "Quelle est la langue de ce mot ?", definitionSynonyms: "Synonymes", definitionSynonymLookup: "Rechercher le synonyme" },
+  de: { define: "Definieren", definitionWordPlaceholder: "Markieren oder geben Sie ein Wort ein", definitionChooseLanguage: "Welche Sprache hat dieses Wort?", definitionSynonyms: "Synonyme", definitionSynonymLookup: "Synonym nachschlagen" },
+  pt: { define: "Definir", definitionWordPlaceholder: "Selecione ou digite uma palavra", definitionChooseLanguage: "Qual é o idioma desta palavra?", definitionSynonyms: "Sinônimos", definitionSynonymLookup: "Pesquisar sinônimo" },
+  zh: { define: "释义", definitionWordPlaceholder: "选中或输入一个词", definitionChooseLanguage: "这个词是什么语言？", definitionSynonyms: "同义词", definitionSynonymLookup: "查询同义词" },
+  ja: { define: "調べる", definitionWordPlaceholder: "単語を選択または入力", definitionChooseLanguage: "この単語はどの言語ですか？", definitionSynonyms: "類義語", definitionSynonymLookup: "類義語を調べる" },
+  ko: { define: "뜻 찾기", definitionWordPlaceholder: "단어를 선택하거나 입력", definitionChooseLanguage: "이 단어는 어느 언어인가요?", definitionSynonyms: "유의어", definitionSynonymLookup: "유의어 찾기" },
 };
 
 function supportedBrowserLanguage() {
