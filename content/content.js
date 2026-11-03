@@ -12,6 +12,7 @@
     SELECTION: "lingua/selection-changed",
     GET_SELECTION: "lingua/get-selection",
     GET_PAGE_TEXT: "lingua/get-page-text",
+    GET_READ_ALOUD_TEXT: "lingua/get-read-aloud-text",
     GET_PAGE_SEGMENTS: "lingua/get-page-segments",
     APPLY_PAGE_TRANSLATION: "lingua/apply-page-translation",
     RESTORE_PAGE_TEXT: "lingua/restore-page-text",
@@ -88,6 +89,22 @@
     return text.slice(0, MAX_PAGE_CHARS);
   }
 
+  function extractReadAloudText() {
+    const roots = [...document.querySelectorAll("article,main,[role='main']")]
+      .filter(isVisible)
+      .sort((a, b) => (b.innerText || "").length - (a.innerText || "").length);
+    const root = roots[0] || document.body;
+    const blocks = "h1,h2,h3,h4,h5,h6,p,li,blockquote";
+    const skip = "nav,header,footer,aside,[role='navigation'],[role='toolbar'],[role='complementary'],button,input,textarea,select,option,figure,figcaption,table,caption,thead,tbody,tfoot,tr,td,th,script,style,noscript,pre,code,[hidden],[aria-hidden='true'],[id*='cookie' i],[class*='cookie' i],[id*='consent' i],[class*='consent' i]";
+    const parts = document.title ? [document.title.trim()] : [];
+    for (const element of root.querySelectorAll(blocks)) {
+      if (element.querySelector(blocks) || element.closest(skip) || !isVisible(element)) continue;
+      const text = (element.innerText || "").replace(/\s+/g, " ").trim();
+      if (text.length > 1 && parts.at(-1) !== text) parts.push(text);
+    }
+    return parts.join("\n").slice(0, MAX_PAGE_CHARS);
+  }
+
   // Page translation changes only Text nodes. Their containing elements (including links)
   // remain in place, so hrefs, event listeners, and normal page interaction are preserved.
   function restorePageText() {
@@ -155,6 +172,8 @@
         url: location.href,
         lang: document.documentElement.lang || "",
       });
+    } else if (msg?.type === MSG.GET_READ_ALOUD_TEXT) {
+      sendResponse({ ok: true, text: extractReadAloudText(), lang: document.documentElement.lang || "" });
     } else if (msg?.type === MSG.GET_SELECTION) {
       sendResponse({ ok: true, text: readSelection(), lang: document.documentElement.lang || "" });
     } else if (msg?.type === MSG.GET_PAGE_SEGMENTS) {

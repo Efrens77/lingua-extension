@@ -1,4 +1,5 @@
 import { normalizeLanguage } from "../../../core/translation/chrome.js";
+import { normalizeWord } from "../../../core/word.js";
 
 const TEMPLATE = `
   <section class="card definition-intro">
@@ -18,24 +19,27 @@ const TEMPLATE = `
   <section class="card definition-result" data-el="result" aria-live="polite">
     <p class="definition-message" data-el="message"></p>
     <div data-el="content" hidden>
-      <h1 class="definition-word" data-el="heading"></h1>
-      <p class="definition-meta" data-el="meta"></p>
-      <p class="definition-gloss" data-el="gloss" hidden></p>
-      <p class="definition-field" data-el="phonetic" hidden></p>
+      <section class="definition-pronunciation">
+        <div>
+          <h1 class="definition-word" data-el="heading"></h1>
+          <p class="definition-meta" data-el="meta"></p>
+          <p class="definition-gloss" data-el="gloss" hidden></p>
+          <p class="definition-field" data-el="phonetic" hidden></p>
+        </div>
+        <button type="button" class="definition-pronounce" data-el="pronounce" aria-pressed="false">
+          <span aria-hidden="true">🎙</span>
+        </button>
+      </section>
       <div data-el="entries"></div>
       <section class="definition-synonym-section" data-el="synonymSection" hidden>
         <h3 data-el="synonymsTitle"></h3>
         <div class="definition-synonyms" data-el="synonyms"></div>
       </section>
       <p class="definition-attribution" data-el="attribution"></p>
+      <p class="definition-attribution" data-el="audioAttribution"></p>
     </div>
   </section>
 `;
-
-export function normalizeWord(value) {
-  const word = String(value || "").trim().replace(/^[\s\p{P}]+|[\s\p{P}]+$/gu, "");
-  return /^[\p{L}\p{M}]+(?:['’-][\p{L}\p{M}]+)*$/u.test(word) ? word : null;
-}
 
 function reliablePageLanguage(value) {
   const code = normalizeLanguage(value);
@@ -44,7 +48,7 @@ function reliablePageLanguage(value) {
 
 export default {
   async mount(root, ctx) {
-    const { bridge, dictionary, i18n, translator } = ctx;
+    const { bridge, dictionary, pronunciation, i18n, translator, sidepanelSelection } = ctx;
     const href = new URL("./definition.css", import.meta.url).href;
     if (!document.querySelector(`link[href="${href}"]`)) {
       const link = document.createElement("link");
@@ -53,7 +57,7 @@ export default {
     root.innerHTML = TEMPLATE;
     const el = Object.fromEntries([...root.querySelectorAll("[data-el]")].map((node) => [node.dataset.el, node]));
     const state = {
-      active: false, word: "", pageLang: "", sourceLanguage: "", result: null, request: 0, manual: false,
+      active: false, word: "", pageLang: "", sourceLanguage: "", result: null, request: 0, manual: false, audio: null,
     };
 
     const t = (key) => i18n.t(key);
@@ -68,12 +72,14 @@ export default {
     }
 
     function hideResult() {
+      stopPronunciation();
       el.result.hidden = true;
       el.content.hidden = true;
       el.message.textContent = "";
     }
 
     function showMessage(message) {
+      stopPronunciation();
       el.result.hidden = false;
       el.content.hidden = true;
       el.message.hidden = false;
@@ -111,6 +117,7 @@ export default {
       el.gloss.textContent = result.gloss ? t("definitionTranslation") + ": " + result.gloss : "";
       el.phonetic.hidden = !result.phonetic;
       el.phonetic.textContent = result.phonetic ? t("definitionPhonetic") + ": /" + result.phonetic + "/" : "";
+      el.pronounce.setAttribute("aria-label", t("pronouncePlay") + ": " + result.word);
       el.entries.replaceChildren();
       for (const entry of result.entries) {
         const section = document.createElement("section");
@@ -172,6 +179,54 @@ export default {
           el.attribution.append(" · ", license);
         }
       }
+      el.audioAttribution.replaceChildren();
+      for (const [index, attribution] of (result.pronunciation?.attributions || []).entries()) {
+        if (index) el.audioAttribution.append(" · ");
+        const source = document.createElement("a");
+        source.href = attribution.url; source.target = "_blank"; source.rel = "noopener";
+        source.textContent = t("pronounceSource") + ": " + attribution.name
+          + (attribution.author ? " (" + attribution.author + ")" : "");
+        el.audioAttribution.append(source);
+        if (attribution.license) {
+          const license = document.createElement("a");
+          license.href = attribution.licenseUrl || attribution.url; license.target = "_blank"; license.rel = "license noopener";
+          license.textContent = attribution.license; el.audioAttribution.append(" · ", license);
+        }
+      }
+    }
+
+    function stopPronunciation() {
+      pronunciation.stopSpeech();
+      state.audio?.pause?.();
+      state.audio = null;
+      el.pronounce?.setAttribute("aria-pressed", "false");
+      if (state.result) el.pronounce?.setAttribute("aria-label", t("pronouncePlay") + ": " + state.result.word);
+    }
+
+    function playPronunciation() {
+      const result = state.result;
+      if (!result) return;
+      if (state.audio) { stopPronunciation(); return; }
+      const fallback = () => {
+        const started = pronunciation.speakText(result.word, result.sourceLanguage, {
+          onEnd: stopPronunciation, onError: stopPronunciation,
+        });
+        if (!started) showMessage(t("pronounceNoAudio"));
+        else {
+          state.audio = { pause: pronunciation.stopSpeech };
+          el.pronounce.setAttribute("aria-pressed", "true");
+          el.pronounce.setAttribute("aria-label", t("pronounceStop") + ": " + result.word);
+        }
+      };
+      if (!result.pronunciation?.audio?.url) { fallback(); return; }
+      pronunciation.stopSpeech();
+      const audio = new Audio(result.pronunciation.audio.url);
+      audio.onended = stopPronunciation;
+      audio.onerror = fallback;
+      state.audio = audio;
+      audio.play().catch(fallback);
+      el.pronounce.setAttribute("aria-pressed", "true");
+      el.pronounce.setAttribute("aria-label", t("pronounceStop") + ": " + result.word);
     }
 
     async function translateText(text, from, to) {
@@ -250,6 +305,12 @@ export default {
         state.sourceLanguage = sourceLanguage;
         state.result = result;
         renderResult(result);
+        pronunciation.lookupPronunciation({ word: valid, sourceLanguage }).then((pronunciationResult) => {
+          if (request !== state.request || state.result !== result) return;
+          result.pronunciation = pronunciationResult;
+          if (!result.phonetic && pronunciationResult.phonetic) result.phonetic = pronunciationResult.phonetic;
+          renderResult(result);
+        }).catch((error) => console.error("[Lingua] pronunciation lookup failed:", error));
       } catch (error) {
         if (request !== state.request) return;
         console.error("[Lingua] definition lookup failed:", error);
@@ -288,7 +349,17 @@ export default {
     el.word.addEventListener("keydown", (event) => {
       if (event.key === "Enter") lookup(el.word.value, "", { manual: true });
     });
+    el.pronounce.addEventListener("click", playPronunciation);
     bridge.watchSelection((text, _tab, details) => useSelection(text, details));
+    document.addEventListener("selectionchange", () => {
+      if (!state.active) return;
+      const selection = document.getSelection();
+      const anchor = selection?.anchorNode?.nodeType === Node.TEXT_NODE
+        ? selection.anchorNode.parentElement : selection?.anchorNode;
+      if (!anchor?.closest?.(".definition-word,.definition-gloss,.definition-entry li,.definition-example,.definition-example-translation")) return;
+      const selected = selection?.toString().trim() || "";
+      if (normalizeWord(selected)) lookup(selected, "", { manual: true });
+    });
     i18n.subscribe(() => {
       localizeStatic();
       if (state.word) lookup(state.word, state.pageLang, { manual: state.manual });
@@ -298,11 +369,16 @@ export default {
     return {
       async activate() {
         state.active = true;
+        const panelSelection = sidepanelSelection.take();
+        if (normalizeWord(panelSelection)) {
+          lookup(panelSelection, "", { manual: true });
+          return;
+        }
         const tab = await bridge.getActiveTab();
         const selection = await bridge.getSelectionText(tab);
         useSelection(selection?.ok ? selection.text : "", selection || {});
       },
-      deactivate() { state.active = false; },
+      deactivate() { state.active = false; stopPronunciation(); },
     };
   },
 };

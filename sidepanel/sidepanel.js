@@ -20,6 +20,22 @@ const THEME_KEY = "app.theme";
 const SIZE_KEY = "app.text-scale";
 
 document.getElementById("feedback-link").href = FEEDBACK_URL;
+document.addEventListener("selectionchange", () => {
+  const active = document.activeElement;
+  const selection = document.getSelection();
+  const anchor = selection?.anchorNode?.nodeType === Node.TEXT_NODE
+    ? selection.anchorNode.parentElement : selection?.anchorNode;
+  if (!anchor?.closest?.(".result-text,.definition-word,.definition-gloss,.definition-entry li,.definition-example,.definition-example-translation")) return;
+  const text = typeof active?.selectionStart === "number"
+    ? active.value.slice(active.selectionStart, active.selectionEnd)
+    : selection?.toString();
+  if (text?.trim()) ctx.sidepanelSelection.set(text);
+});
+// Keep a page selection long enough for the user to switch tools. Individual
+// tabs still decide whether and how to use it.
+ctx.bridge.watchSelection((text) => {
+  if (text?.trim()) ctx.sidepanelSelection.set(text);
+});
 
 function applyTheme(theme) {
   const isDark = theme === "dark";

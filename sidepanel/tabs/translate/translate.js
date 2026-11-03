@@ -67,6 +67,9 @@ const TEMPLATE = `
       <button type="button" class="icon-btn" data-el="speak" aria-label="Listen to translation" title="Listen to translation">${ICONS.speaker}</button>
     </div>
   </section>
+  <section class="page-read" data-el="pageRead" hidden>
+    <button type="button" data-el="readAloud" aria-pressed="false">Read aloud</button>
+  </section>
 
   <section class="recent" data-el="recentSection" hidden>
     <h3 class="section-label">Recent translations</h3>
@@ -95,7 +98,7 @@ function optionHtml(list, withAuto, i18n) {
 
 export default {
   async mount(root, ctx) {
-    const { bridge, storage, translator, i18n } = ctx;
+    const { bridge, storage, translator, pronunciation, i18n } = ctx;
     loadStylesheet();
     root.innerHTML = TEMPLATE;
 
@@ -118,6 +121,8 @@ export default {
       el.clear.setAttribute("aria-label", t("clear")); el.clear.title = t("clear");
       el.copy.setAttribute("aria-label", t("copy")); el.copy.title = t("copy");
       el.speak.setAttribute("aria-label", t("listen")); el.speak.title = t("listen");
+      el.readAloud.textContent = state.pageReading ? t("stopReading") : t("readAloud");
+      el.readAloud.setAttribute("aria-label", state.pageReading ? t("stopReading") : t("readAloud"));
       root.querySelector(".section-label").textContent = t("recent");
       el.hint.textContent = hintFor(state.mode);
       renderLanguageOptions();
@@ -142,6 +147,7 @@ export default {
       controller: null,
       active: false,
       recent: await storage.get(RECENT_KEY, []),
+      pageReading: false,
     };
     let runTimer = null;
     let recentTimer = null;
@@ -183,6 +189,7 @@ export default {
       el.source.value = text;
       el.source.placeholder = isPage ? "" : "Highlight text on the page, or type here…";
       el.sourceCard.hidden = isPage;
+      el.pageRead.hidden = !isPage;
       el.refresh.hidden = !isPage;
       el.clear.hidden = isPage || !text;
       el.count.textContent = `${text.length.toLocaleString()} / ${limit().toLocaleString()}`;
@@ -240,6 +247,38 @@ export default {
 
     function showPageMessage(message) {
       setPageProgress(0, message);
+    }
+
+    function stopPageRead() {
+      pronunciation.stopSpeech();
+      state.pageReading = false;
+      el.readAloud?.setAttribute("aria-pressed", "false");
+      el.readAloud && (el.readAloud.textContent = t("readAloud"));
+      el.readAloud?.setAttribute("aria-label", t("readAloud"));
+    }
+
+    async function readPageAloud() {
+      if (state.pageReading) { stopPageRead(); return; }
+      try {
+        const tab = await bridge.getActiveTab();
+        if (!isUsablePageTab(tab)) { showPageMessage(t("regularPage")); return; }
+        const res = await bridge.getReadAloudText(tab);
+        const text = res?.ok ? String(res.text || "").trim() : "";
+        if (!text) { showPageMessage(t("readAloudUnavailable")); return; }
+        const language = state.pageView === "translated" ? state.to : (state.detected || res.lang || "en");
+        const started = pronunciation.speakChunks(text, language, {
+          onEnd: stopPageRead,
+          onError: () => { stopPageRead(); showPageMessage(t("readAloudUnavailable")); },
+        });
+        if (!started) { showPageMessage(t("readAloudUnavailable")); return; }
+        state.pageReading = true;
+        el.readAloud.setAttribute("aria-pressed", "true");
+        el.readAloud.textContent = t("stopReading");
+        el.readAloud.setAttribute("aria-label", t("stopReading"));
+      } catch (error) {
+        console.error("[Lingua] page read-aloud failed:", error);
+        showPageMessage(t("readAloudUnavailable"));
+      }
     }
 
     function isUsablePageTab(tab) {
@@ -345,6 +384,7 @@ export default {
     }
 
     async function runPageTranslation({ force = false } = {}) {
+      stopPageRead();
       try {
         const tab = await bridge.getActiveTab();
         if (!isUsablePageTab(tab)) {
@@ -372,6 +412,7 @@ export default {
 
     async function setPageView(view) {
       if (state.mode !== "page") return;
+      stopPageRead();
       if (view === "translated") {
         runPageTranslation();
         return;
@@ -453,6 +494,7 @@ export default {
 
     // ---------- mode ----------
     function applyMode(mode, { import: doImport = true } = {}) {
+      stopPageRead();
       state.mode = mode;
       for (const b of modeButtons) b.setAttribute("aria-checked", String(b.dataset.mode === mode));
       el.hint.textContent = hintFor(mode);
@@ -488,6 +530,7 @@ export default {
     });
     el.translatedView.addEventListener("click", () => setPageView("translated"));
     el.originalView.addEventListener("click", () => setPageView("original"));
+    el.readAloud.addEventListener("click", readPageAloud);
     el.swap.addEventListener("click", () => {
       const newTo = state.from === AUTO_CODE ? state.detected : state.from;
       if (!newTo || !isSupported(newTo)) {
@@ -549,6 +592,7 @@ export default {
 
     // Tab switches / page loads.
     bridge.watchActiveTab((tab) => {
+      stopPageRead();
       if (!state.active || !tab) return;
       if (state.mode === "page") {
         importPage();
@@ -591,6 +635,7 @@ export default {
       },
       deactivate() {
         state.active = false;
+        stopPageRead();
         window.speechSynthesis?.cancel();
         setSpeaking(false);
       },
