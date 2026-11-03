@@ -6,6 +6,7 @@ import { MSG } from "./core/messages.js";
 const PAGE_STATE_KEY = "translate.page-state";
 const runs = new Map(); // tab id -> AbortController
 const pageCache = new Map(); // current worker lifetime: tab + URL + source + target + text
+const pageViewCache = new Map(); // preserves metadata while the content script holds swapped text
 const BATCH_MAX_CHARS = 400;
 let offscreenReady = null;
 
@@ -174,6 +175,7 @@ async function translatePage(tabId, to) {
     const applied = await sendToTab(tab, { type: MSG.APPLY_PAGE_TRANSLATION, translations });
     if (!applied?.ok) throw new Error("Lingua couldn't update this page");
     const state = { url: tab.url, to, view: "translated", detectedFrom };
+    pageViewCache.set(tabId, state);
     await saveState(tabId, state);
     publish({ type: MSG.PAGE_STATE, tabId, state });
     return { ok: true, state };
@@ -195,11 +197,24 @@ async function translatePage(tabId, to) {
 }
 
 async function restorePage(tabId) {
+  runs.get(tabId)?.abort();
   const tab = await chrome.tabs.get(tabId);
   const result = await sendToTab(tab, { type: MSG.RESTORE_PAGE_TEXT });
   await clearState(tabId);
   publish({ type: MSG.PAGE_STATE, tabId, state: { url: tab.url, view: "original" } });
   return result?.ok ? { ok: true } : { ok: false, reason: result?.reason };
+}
+
+async function showCachedPage(tabId, to) {
+  const tab = await chrome.tabs.get(tabId);
+  const result = await sendToTab(tab, { type: MSG.SHOW_CACHED_PAGE });
+  if (!result?.cached) return result;
+  const prior = pageViewCache.get(tabId);
+  const state = { url: tab.url, to, view: "translated", detectedFrom: prior?.detectedFrom || null };
+  pageViewCache.set(tabId, state);
+  await saveState(tabId, state);
+  publish({ type: MSG.PAGE_STATE, tabId, state });
+  return { ...result, state };
 }
 
 chrome.runtime.onInstalled.addListener(enableSidePanelOnActionClick);
@@ -225,6 +240,17 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     restorePage(msg.tabId).then(sendResponse, (err) => {
       console.error("[Lingua] page restore failed:", err);
       sendResponse({ ok: false, error: err.message });
+    });
+    return true;
+  }
+  if (msg?.type === MSG.SHOW_CACHED_PAGE) {
+    if (!Number.isInteger(msg.tabId)) {
+      sendResponse({ ok: false, cached: false, reason: "restricted" });
+      return;
+    }
+    showCachedPage(msg.tabId, msg.to).then(sendResponse, (err) => {
+      console.error("[Lingua] cached page view failed:", err);
+      sendResponse({ ok: false, cached: false, error: err.message });
     });
     return true;
   }
@@ -261,5 +287,6 @@ chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
 chrome.tabs.onRemoved.addListener((tabId) => {
   runs.get(tabId)?.abort();
   runs.delete(tabId);
+  pageViewCache.delete(tabId);
   clearState(tabId).catch(() => {});
 });

@@ -5,6 +5,7 @@
 - The standalone Pronounce tab was intentionally removed: pronunciation is more useful in the context of a Define result.
 - Define now has pronunciation playback, preferring matching Wiktionary/Wikimedia recordings and falling back to browser speech synthesis.
 - Translate now has Full Page read-aloud for the visible original or translated main page content.
+- Full Page Original/Translated switching now reuses the page’s cached text mapping, batches text updates, preserves scroll position, and avoids a new translation request when no new translation is needed.
 
 ## Privacy and data
 

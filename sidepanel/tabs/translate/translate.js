@@ -148,6 +148,8 @@ export default {
       active: false,
       recent: await storage.get(RECENT_KEY, []),
       pageReading: false,
+      pageSwitching: false,
+      requestedPageView: null,
     };
     let runTimer = null;
     let recentTimer = null;
@@ -177,6 +179,7 @@ export default {
       el.swap.hidden = isPage;
       el.pageViewToggle.hidden = !isPage;
       el.translatedView.disabled = false;
+      el.pageViewToggle.setAttribute("aria-busy", String(state.pageSwitching));
       el.translatedView.setAttribute("aria-pressed", String(state.pageView === "translated"));
       el.originalView.setAttribute("aria-pressed", String(state.pageView === "original"));
     }
@@ -412,9 +415,38 @@ export default {
 
     async function setPageView(view) {
       if (state.mode !== "page") return;
+      if (!state.pageSwitching && view === state.pageView) return;
+      state.requestedPageView = view;
+      if (state.pageSwitching) return;
+      state.pageSwitching = true;
+      renderPageControls();
+      while (state.requestedPageView) {
+        const requested = state.requestedPageView;
+        state.requestedPageView = null;
+        await applyPageView(requested);
+      }
+      state.pageSwitching = false;
+      renderPageControls();
+    }
+
+    async function applyPageView(view) {
       stopPageRead();
       if (view === "translated") {
-        runPageTranslation();
+        try {
+          const tab = await bridge.getActiveTab();
+          if (!isUsablePageTab(tab)) return;
+          const cached = await bridge.showCachedPage(tab, state.to);
+          if (cached?.ok && cached.cached) {
+            state.lastPageId = `${tab.id}|${tab.url}`;
+            state.pageState = cached.state || { url: tab.url, to: state.to, view: "translated" };
+            state.pageView = "translated";
+            renderSource();
+            return;
+          }
+        } catch (err) {
+          console.error("[Lingua] cached page view failed:", err);
+        }
+        await runPageTranslation();
         return;
       }
       try {

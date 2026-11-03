@@ -8,6 +8,7 @@ export const MSG = {
   GET_PAGE_SEGMENTS: "lingua/get-page-segments",
   APPLY_PAGE_TRANSLATION: "lingua/apply-page-translation",
   RESTORE_PAGE_TEXT: "lingua/restore-page-text",
+  SHOW_CACHED_PAGE: "lingua/show-cached-page",
   TRANSLATE_PAGE: "lingua/translate-page",
   RESTORE_PAGE: "lingua/restore-page",
   GET_PAGE_STATE: "lingua/get-page-state",
