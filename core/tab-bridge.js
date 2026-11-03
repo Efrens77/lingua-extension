@@ -67,6 +67,11 @@ export function restorePage(tab) {
   return chrome.runtime.sendMessage({ type: MSG.RESTORE_PAGE, tabId: tab?.id });
 }
 
+export function showCachedPage(tab, to) {
+  if (!tab?.id || !isReadable(tab.url)) return Promise.resolve({ ok: false, cached: false, reason: "restricted" });
+  return chrome.runtime.sendMessage({ type: MSG.SHOW_CACHED_PAGE, tabId: tab.id, to });
+}
+
 export function getPageState(tab) {
   if (!tab?.id || !isReadable(tab.url)) return Promise.resolve({ ok: false, reason: "restricted" });
   return chrome.runtime.sendMessage({ type: MSG.GET_PAGE_STATE, tabId: tab?.id });

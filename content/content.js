@@ -16,6 +16,7 @@
     GET_PAGE_SEGMENTS: "lingua/get-page-segments",
     APPLY_PAGE_TRANSLATION: "lingua/apply-page-translation",
     RESTORE_PAGE_TEXT: "lingua/restore-page-text",
+    SHOW_CACHED_PAGE: "lingua/show-cached-page",
   };
   const MAX_PAGE_CHARS = 60000;
 
@@ -60,6 +61,7 @@
     'script,style,noscript,template,[aria-hidden="true"],pre,code,svg,' +
     'input,textarea,select,option,[contenteditable],[role="textbox"],[hidden]';
   let pageSegments = new Map();
+  let pageView = "original";
 
   function isVisible(el) {
     return typeof el.checkVisibility === "function"
@@ -115,11 +117,35 @@
         restored++;
       }
     }
+    pageView = "original";
     return restored;
+  }
+
+  function swapPageView(view) {
+    if (view === pageView) return Promise.resolve({ ok: true, cached: pageSegments.size > 0, applied: 0 });
+    if (!pageSegments.size) return Promise.resolve({ ok: true, cached: false, applied: 0 });
+    const x = window.scrollX;
+    const y = window.scrollY;
+    return new Promise((resolve) => requestAnimationFrame(() => {
+      let applied = 0;
+      for (const entry of pageSegments.values()) {
+        if (!entry.node?.isConnected) continue;
+        const next = view === "translated" ? entry.translated : entry.original;
+        if (typeof next !== "string" || entry.node.nodeValue === next) continue;
+        entry.node.nodeValue = next;
+        applied++;
+      }
+      pageView = view;
+      requestAnimationFrame(() => {
+        window.scrollTo(x, y);
+        resolve({ ok: true, cached: view === "translated" && applied > 0, applied });
+      });
+    }));
   }
 
   function collectPageSegments(maxChars = 12000) {
     restorePageText();
+    pageSegments.clear();
     const root = pickRoot();
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
     const segments = [];
@@ -151,16 +177,14 @@
   }
 
   function applyPageTranslation(translations) {
-    let applied = 0;
     for (const item of translations || []) {
       const entry = pageSegments.get(String(item?.id));
       if (!entry?.node?.isConnected || typeof item?.text !== "string") continue;
       // Do not overwrite a text node changed by the page while Lingua was translating.
       if (entry.node.nodeValue !== entry.original) continue;
-      entry.node.nodeValue = item.text + entry.original.slice(entry.source.length);
-      applied++;
+      entry.translated = item.text + entry.original.slice(entry.source.length);
     }
-    return { ok: true, applied, total: pageSegments.size };
+    return swapPageView("translated").then((result) => ({ ...result, total: pageSegments.size }));
   }
 
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
@@ -179,9 +203,14 @@
     } else if (msg?.type === MSG.GET_PAGE_SEGMENTS) {
       sendResponse(collectPageSegments(Number(msg.maxChars) || 12000));
     } else if (msg?.type === MSG.APPLY_PAGE_TRANSLATION) {
-      sendResponse(applyPageTranslation(msg.translations));
+      applyPageTranslation(msg.translations).then(sendResponse);
+      return true;
     } else if (msg?.type === MSG.RESTORE_PAGE_TEXT) {
-      sendResponse({ ok: true, restored: restorePageText() });
+      swapPageView("original").then((result) => sendResponse({ ...result, restored: result.applied }));
+      return true;
+    } else if (msg?.type === MSG.SHOW_CACHED_PAGE) {
+      swapPageView("translated").then(sendResponse);
+      return true;
     }
     // Synchronous responses only, so no `return true`.
   });
