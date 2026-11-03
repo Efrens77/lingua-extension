@@ -40,6 +40,28 @@ const DEFINITION_REFINEMENT_STRINGS = {
   ko: { define: "뜻 찾기", definitionWordPlaceholder: "단어를 선택하거나 입력", definitionChooseLanguage: "이 단어는 어느 언어인가요?", definitionSynonyms: "유의어", definitionSynonymLookup: "유의어 찾기" },
 };
 
+const PRONUNCIATION_STRINGS = {
+  en: { pronounce:"Pronounce", pronounceLoading:"Looking up pronunciation…", pronounceLanguageUnknown:"Lingua could not identify this word’s language. Try a word from a page with a declared language.", pronounceUnavailable:"Pronunciation is temporarily unavailable. Please try again shortly.", pronounceRateLimit:"Pronunciation service limit reached. Please wait a moment and try again.", pronouncePlay:"Play pronunciation", pronounceStop:"Stop pronunciation", pronounceNoAudio:"No compatible pronunciation audio is available for this word.", pronounceSyllables:"Syllables", pronounceStress:"Primary stress", pronounceTip:"Pronunciation tip", pronounceSource:"Audio source", pronounceSyllablePlay:"Play syllable" },
+  es: { pronounce:"Pronunciar", pronounceLoading:"Buscando pronunciación…", pronounceLanguageUnknown:"Lingua no pudo identificar el idioma de esta palabra. Prueba una palabra de una página con idioma declarado.", pronounceUnavailable:"La pronunciación no está disponible temporalmente. Inténtalo de nuevo pronto.", pronounceRateLimit:"Se alcanzó el límite del servicio de pronunciación. Espera un momento e inténtalo de nuevo.", pronouncePlay:"Reproducir pronunciación", pronounceStop:"Detener pronunciación", pronounceNoAudio:"No hay audio de pronunciación compatible para esta palabra.", pronounceSyllables:"Sílabas", pronounceStress:"Acento principal", pronounceTip:"Consejo de pronunciación", pronounceSource:"Fuente de audio", pronounceSyllablePlay:"Reproducir sílaba" },
+  fr: { pronounce:"Prononcer", pronounceLoading:"Recherche de la prononciation…", pronounceLanguageUnknown:"Lingua n’a pas pu identifier la langue de ce mot. Essayez un mot d’une page avec une langue déclarée.", pronounceUnavailable:"La prononciation est temporairement indisponible. Réessayez bientôt.", pronounceRateLimit:"La limite du service de prononciation est atteinte. Patientez un instant et réessayez.", pronouncePlay:"Lire la prononciation", pronounceStop:"Arrêter la prononciation", pronounceNoAudio:"Aucun audio de prononciation compatible n’est disponible pour ce mot.", pronounceSyllables:"Syllabes", pronounceStress:"Accent principal", pronounceTip:"Conseil de prononciation", pronounceSource:"Source audio", pronounceSyllablePlay:"Lire la syllabe" },
+  de: { pronounce:"Aussprache", pronounceLoading:"Aussprache wird gesucht…", pronounceLanguageUnknown:"Lingua konnte die Sprache dieses Wortes nicht bestimmen. Versuchen Sie ein Wort von einer Seite mit deklarierter Sprache.", pronounceUnavailable:"Die Aussprache ist vorübergehend nicht verfügbar. Bitte versuchen Sie es später erneut.", pronounceRateLimit:"Das Aussprachelimit wurde erreicht. Warten Sie einen Moment und versuchen Sie es erneut.", pronouncePlay:"Aussprache abspielen", pronounceStop:"Aussprache stoppen", pronounceNoAudio:"Für dieses Wort ist kein kompatibles Audio verfügbar.", pronounceSyllables:"Silben", pronounceStress:"Hauptbetonung", pronounceTip:"Aussprachetipp", pronounceSource:"Audioquelle", pronounceSyllablePlay:"Silbe abspielen" },
+  pt: { pronounce:"Pronunciar", pronounceLoading:"Buscando pronúncia…", pronounceLanguageUnknown:"O Lingua não conseguiu identificar o idioma desta palavra. Tente uma palavra de uma página com idioma declarado.", pronounceUnavailable:"A pronúncia está temporariamente indisponível. Tente novamente em breve.", pronounceRateLimit:"O limite do serviço de pronúncia foi atingido. Aguarde um momento e tente novamente.", pronouncePlay:"Reproduzir pronúncia", pronounceStop:"Parar pronúncia", pronounceNoAudio:"Não há áudio de pronúncia compatível para esta palavra.", pronounceSyllables:"Sílabas", pronounceStress:"Acento principal", pronounceTip:"Dica de pronúncia", pronounceSource:"Fonte de áudio", pronounceSyllablePlay:"Reproduzir sílaba" },
+  zh: { pronounce:"发音", pronounceLoading:"正在查询发音…", pronounceLanguageUnknown:"Lingua 无法识别这个词的语言。请尝试页面已声明语言中的词。", pronounceUnavailable:"发音暂时不可用，请稍后再试。", pronounceRateLimit:"发音服务已达限制，请稍候再试。", pronouncePlay:"播放发音", pronounceStop:"停止发音", pronounceNoAudio:"此词没有可用的兼容发音音频。", pronounceSyllables:"音节", pronounceStress:"重音", pronounceTip:"发音提示", pronounceSource:"音频来源", pronounceSyllablePlay:"播放音节" },
+  ja: { pronounce:"発音", pronounceLoading:"発音を検索中…", pronounceLanguageUnknown:"Lingua はこの単語の言語を特定できませんでした。言語が宣言されたページ上の単語を試してください。", pronounceUnavailable:"発音は一時的に利用できません。しばらくしてからもう一度お試しください。", pronounceRateLimit:"発音サービスの上限に達しました。少し待ってからもう一度お試しください。", pronouncePlay:"発音を再生", pronounceStop:"発音を停止", pronounceNoAudio:"この単語には対応する発音音声がありません。", pronounceSyllables:"音節", pronounceStress:"主強勢", pronounceTip:"発音のヒント", pronounceSource:"音声の出典", pronounceSyllablePlay:"音節を再生" },
+  ko: { pronounce:"발음", pronounceLoading:"발음을 찾는 중…", pronounceLanguageUnknown:"Lingua가 이 단어의 언어를 식별하지 못했습니다. 언어가 선언된 페이지의 단어를 시도해 보세요.", pronounceUnavailable:"발음을 일시적으로 사용할 수 없습니다. 잠시 후 다시 시도하세요.", pronounceRateLimit:"발음 서비스 한도에 도달했습니다. 잠시 후 다시 시도하세요.", pronouncePlay:"발음 재생", pronounceStop:"발음 중지", pronounceNoAudio:"이 단어에 사용할 수 있는 발음 오디오가 없습니다.", pronounceSyllables:"음절", pronounceStress:"주 강세", pronounceTip:"발음 팁", pronounceSource:"오디오 출처", pronounceSyllablePlay:"음절 재생" },
+};
+
+const READ_ALOUD_STRINGS = {
+  en: { readAloud:"Read aloud", stopReading:"Stop reading", readAloudUnavailable:"Lingua could not read this page aloud right now." },
+  es: { readAloud:"Leer en voz alta", stopReading:"Dejar de leer", readAloudUnavailable:"Lingua no puede leer esta página en voz alta ahora mismo." },
+  fr: { readAloud:"Lire à voix haute", stopReading:"Arrêter la lecture", readAloudUnavailable:"Lingua ne peut pas lire cette page à voix haute pour le moment." },
+  de: { readAloud:"Vorlesen", stopReading:"Vorlesen beenden", readAloudUnavailable:"Lingua kann diese Seite gerade nicht vorlesen." },
+  pt: { readAloud:"Ler em voz alta", stopReading:"Parar leitura", readAloudUnavailable:"O Lingua não pode ler esta página em voz alta agora." },
+  zh: { readAloud:"朗读", stopReading:"停止朗读", readAloudUnavailable:"Lingua 目前无法朗读此页面。" },
+  ja: { readAloud:"読み上げる", stopReading:"読み上げを停止", readAloudUnavailable:"Lingua は現在このページを読み上げられません。" },
+  ko: { readAloud:"소리 내어 읽기", stopReading:"읽기 중지", readAloudUnavailable:"Lingua가 지금 이 페이지를 소리 내어 읽을 수 없습니다." },
+};
+
 function supportedBrowserLanguage() {
   const code = (navigator.language || "en").toLowerCase().split("-")[0];
   return STRINGS[code] ? code : "en";
@@ -55,9 +77,13 @@ export async function createI18n() {
     get resolvedLocale() { return resolved(); },
     t(key) {
       return DEFINITION_REFINEMENT_STRINGS[resolved()]?.[key]
+        ?? PRONUNCIATION_STRINGS[resolved()]?.[key]
+        ?? READ_ALOUD_STRINGS[resolved()]?.[key]
         ?? DEFINITION_STRINGS[resolved()]?.[key]
         ?? STRINGS[resolved()]?.[key]
         ?? DEFINITION_REFINEMENT_STRINGS.en[key]
+        ?? PRONUNCIATION_STRINGS.en[key]
+        ?? READ_ALOUD_STRINGS.en[key]
         ?? DEFINITION_STRINGS.en[key]
         ?? STRINGS.en[key]
         ?? key;

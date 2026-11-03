@@ -12,6 +12,10 @@
 .definition-input-row button { background: var(--teal); border-color: var(--teal); color: #fff; font-weight: 700; }
 .definition-message { margin: 0; color: var(--muted); }
 .definition-word { margin: 0; font-size: 1.5rem; line-height: 1.2; overflow-wrap: anywhere; }
+.definition-pronunciation { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.definition-pronunciation > div { min-width: 0; }
+.definition-pronounce { flex: 0 0 auto; width: 42px; height: 42px; border: 1px solid var(--teal-line); border-radius: 50%; background: var(--teal-tint); color: var(--teal-strong); font-size: 1.2rem; }
+.definition-pronounce[aria-pressed="true"] { background: var(--teal); color: #fff; }
 .definition-meta { margin: 5px 0 0; font-size: 0.8125rem; color: var(--muted); }
 .definition-gloss, .definition-field { margin: 12px 0 0; color: var(--text-2); }
 .definition-gloss { font-weight: 600; }

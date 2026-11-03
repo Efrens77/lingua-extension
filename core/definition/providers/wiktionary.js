@@ -5,6 +5,7 @@ import { LANGUAGES } from "../../languages.js";
 const ENDPOINT = "https://en.wiktionary.org/w/api.php";
 const cache = new Map();
 const sourcePages = new Map();
+const mediaCache = new Map();
 const MAX_ATTEMPTS = 3;
 
 function rateLimitError() {
@@ -237,6 +238,49 @@ async function request(word) {
   throw rateLimitError();
 }
 
+function matchingAudioFile(section, sourceLanguage) {
+  const primary = String(sourceLanguage || "").toLowerCase().split("-")[0];
+  for (const match of section.matchAll(/\{\{audio\|([^|}]+)\|([^|}]+)/gi)) {
+    const language = match[1].trim().toLowerCase().split("-")[0];
+    const file = match[2].trim();
+    if (language === primary && /\.(?:ogg|oga|mp3|wav)$/i.test(file)) return file;
+  }
+  return "";
+}
+
+async function audioFile(fileName) {
+  if (!fileName) return null;
+  if (mediaCache.has(fileName)) return mediaCache.get(fileName);
+  const url = new URL(ENDPOINT);
+  url.search = new URLSearchParams({
+    action: "query", titles: "File:" + fileName, prop: "imageinfo",
+    iiprop: "url|extmetadata", format: "json", formatversion: "2", origin: "*",
+  });
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    const response = await fetch(url);
+    if (response.status === 429) {
+      if (attempt === MAX_ATTEMPTS - 1) throw rateLimitError();
+      await wait(retryDelay(response.headers.get("Retry-After"), attempt));
+      continue;
+    }
+    if (!response.ok) throw new Error("Wikimedia audio lookup answered " + response.status);
+    const image = (await response.json())?.query?.pages?.[0]?.imageinfo?.[0];
+    if (!image?.url) return null;
+    const metadata = image.extmetadata || {};
+    const audio = {
+      url: image.url,
+      name: "Wiktionary",
+      sourceUrl: "https://en.wiktionary.org/wiki/File:" + encodeURIComponent(fileName),
+      license: metadata.LicenseShortName?.value || "Wikimedia Commons",
+      licenseUrl: metadata.LicenseUrl?.value || "",
+      author: plain(metadata.Artist?.value || ""),
+    };
+    mediaCache.set(fileName, audio);
+    return audio;
+  }
+  throw rateLimitError();
+}
+
 function codeForHeading(heading) {
   const special = { Tagalog: "tl", Chinese: "zh-CN", Norwegian: "no" };
   if (special[heading]) return special[heading];
@@ -278,6 +322,10 @@ export const wiktionary = {
     };
     cache.set(key, result);
     return result;
+  },
+  async lookupAudio({ word, sourceLanguage }) {
+    const source = await request(word);
+    return audioFile(matchingAudioFile(languageSection(source.wikitext, sourceLanguage), sourceLanguage));
   },
   async findLanguages({ word }) {
     const variants = [...new Set([word, word.toLocaleLowerCase()])];

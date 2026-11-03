@@ -41,6 +41,10 @@ export function getPageText(tab) {
   return askWithInjectionFallback(tab, { type: MSG.GET_PAGE_TEXT });
 }
 
+export function getReadAloudText(tab) {
+  return askWithInjectionFallback(tab, { type: MSG.GET_READ_ALOUD_TEXT });
+}
+
 export function getPageSegments(tab, maxChars) {
   return askWithInjectionFallback(tab, { type: MSG.GET_PAGE_SEGMENTS, maxChars });
 }

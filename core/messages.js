@@ -4,6 +4,7 @@ export const MSG = {
   SELECTION: "lingua/selection-changed",
   GET_SELECTION: "lingua/get-selection",
   GET_PAGE_TEXT: "lingua/get-page-text",
+  GET_READ_ALOUD_TEXT: "lingua/get-read-aloud-text",
   GET_PAGE_SEGMENTS: "lingua/get-page-segments",
   APPLY_PAGE_TRANSLATION: "lingua/apply-page-translation",
   RESTORE_PAGE_TEXT: "lingua/restore-page-text",

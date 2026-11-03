@@ -1,3 +1,15 @@
+# Lingua v0.3 (Alpha)
+
+## New in 0.3
+
+- The standalone Pronounce tab was intentionally removed: pronunciation is more useful in the context of a Define result.
+- Define now has pronunciation playback, preferring matching Wiktionary/Wikimedia recordings and falling back to browser speech synthesis.
+- Translate now has Full Page read-aloud for the visible original or translated main page content.
+
+## Privacy and data
+
+For a Define pronunciation lookup, the word may be sent to the official Wiktionary and Wikimedia APIs to retrieve source-language phonetics and a matching recorded pronunciation. Browser speech synthesis may be used as a fallback according to the browser and device. Full Page read-aloud uses browser speech synthesis for visible webpage text.
+
 # Lingua v0.2 (Alpha)
 
 ## New in 0.2
