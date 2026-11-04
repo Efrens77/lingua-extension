@@ -16,6 +16,7 @@
     GET_PAGE_SEGMENTS: "lingua/get-page-segments",
     APPLY_PAGE_TRANSLATION: "lingua/apply-page-translation",
     RESTORE_PAGE_TEXT: "lingua/restore-page-text",
+    SET_PAGE_TEXT_VIEW: "lingua/set-page-text-view",
     SHOW_CACHED_PAGE: "lingua/show-cached-page",
   };
   const MAX_PAGE_CHARS = 60000;
@@ -56,10 +57,27 @@
   document.addEventListener("keyup", reportSelection);
 
   // ---------- Page text ----------
-  const BLOCKS = "p,h1,h2,h3,h4,h5,h6,li,blockquote,figcaption,td,th,dt,dd,pre,summary";
-  const SKIP =
-    'script,style,noscript,template,[aria-hidden="true"],pre,code,svg,' +
-    'input,textarea,select,option,[contenteditable],[role="textbox"],[hidden]';
+  const ARTICLE_BLOCKS = "h1,h2,h3,h4,h5,h6,p,li,blockquote,time,[rel='author'],[itemprop='author'],[itemprop='datePublished'],[class*='byline' i],[class*='dateline' i],[class*='subtitle' i],[class*='subhead' i],[class*='deck' i],[class*='dek' i]";
+  // Translation intentionally has a very small exclusion list. It collects
+  // visible text throughout the page, including navigation, sidebars, footer
+  // copy, and visible sponsored/ad cards.
+  const TRANSLATION_SKIP =
+    'script,style,noscript,template,svg,canvas,iframe,object,embed,[aria-hidden="true"],[hidden],' +
+    'input,textarea,select,option,[contenteditable],[role="textbox"],' +
+    "[data-lingua-root],[data-lingua-ui],[id^='lingua-']";
+  // Narration is deliberately much stricter than translation. These patterns
+  // describe common non-editorial modules without relying on a particular site.
+  const ARTICLE_SKIP = TRANSLATION_SKIP + ",nav,footer,aside,form,dialog,button,[role='navigation'],[role='toolbar'],[role='complementary'],[role='dialog']," +
+    "[id*='cookie' i],[class*='cookie' i],[id*='consent' i],[class*='consent' i],[id*='privacy' i],[class*='privacy' i]," +
+    "[id*='advert' i],[class*='advert' i],[class~='ad' i],[class^='ad-' i],[class*=' ad-' i],[data-ad],[data-advertisement]," +
+    "[id*='sponsor' i],[class*='sponsor' i],[id*='promot' i],[class*='promot' i]," +
+    "[id*='sidebar' i],[class*='sidebar' i],[id*='comment' i],[class*='comment' i]," +
+    "[id*='related' i],[class*='related' i],[id*='recommend' i],[class*='recommend' i]," +
+    "[id*='newsletter' i],[class*='newsletter' i],[class*='share' i],[class*='social' i]," +
+    "figure,figcaption,picture,video,audio,[role='figure'],[class*='gallery' i]," +
+    "table,caption,thead,tbody,tfoot,tr,td,th,[role='table'],[class*='chart' i],[class*='ticker' i]," +
+    "[id*='paywall' i],[class*='paywall' i],[id*='signin' i],[class*='signin' i],[id*='login' i],[class*='login' i]," +
+    "[class*='sr-only' i],[class*='visually-hidden' i],[class*='screen-reader' i]";
   let pageSegments = new Map();
   let pageView = "original";
 
@@ -69,42 +87,185 @@
       : el.getClientRects().length > 0;
   }
 
-  function pickRoot() {
-    // Full Page translates visible text across the page, including menus and controls.
-    return document.body;
+  function normalizedText(value) {
+    return String(value || "").replace(/\u00a0/g, " ").replace(/[\u200b-\u200d\ufeff]/g, " ")
+      .replace(/\s+/g, " ").trim();
+  }
+
+  function cleanNarrationText(value) {
+    return normalizedText(value)
+      // Decorative glyphs and control characters are commonly read as their
+      // Unicode names. Keep punctuation that contributes to natural phrasing.
+      .replace(/[•◦▪▫◆◇★☆→←↑↓✓✔✕✖]/g, " ")
+      .replace(/[“”"]/g, "")
+      .replace(/[^\p{L}\p{N}\s.,;:!?…'“”‘’"()\-—–/%&$#+=@]/gu, " ")
+      .replace(/(^|\s)[.,;:!?…'“”‘’"()\-—–/%&$#+=@]{1,}(?=\s|$)/g, "$1")
+      .replace(/\s+([,.;:!?])/g, "$1")
+      .replace(/([!?.,;:]){3,}/g, "$1")
+      .replace(/\s+/g, " ").trim();
+  }
+
+  function visibleTextLength(element) {
+    return normalizedText(element.innerText).length;
+  }
+
+  function articleMetrics(element) {
+    let bodyChars = 0;
+    let paragraphs = 0;
+    for (const paragraph of element.querySelectorAll("p,blockquote")) {
+      if (paragraph.closest(ARTICLE_SKIP) || !isVisible(paragraph)) continue;
+      const text = cleanNarrationText(paragraph.innerText);
+      if (text.length >= 40) { bodyChars += text.length; paragraphs++; }
+    }
+    return { bodyChars, paragraphs, totalChars: visibleTextLength(element) };
+  }
+
+  function isEditorialRoot(element) {
+    const metrics = articleMetrics(element);
+    // This admits long-form stories while rejecting article-shaped navigation,
+    // recommendation cards, and most sponsored cards.
+    return (metrics.paragraphs >= 2 && metrics.bodyChars >= 180)
+      || (metrics.paragraphs >= 1 && metrics.bodyChars >= 700);
+  }
+
+  function articleRoots() {
+    const selector = "article,[role='article'],[itemprop='articleBody'],[class*='article-body' i],[class*='article-content' i],[class*='post-content' i],[class*='entry-content' i]";
+    const candidates = [...document.querySelectorAll(selector)]
+      .filter((element) => isVisible(element) && !element.closest(ARTICLE_SKIP) && isEditorialRoot(element));
+    const semantic = candidates.filter((element) => element.matches("article,[role='article']"));
+    const independent = (items, preferOuter) => items.filter((element) => !items.some((other) => other !== element
+      && (preferOuter ? other.contains(element) : element.contains(other))));
+    // A semantic <article> must win over its nested articleBody/content
+    // wrapper. The old smallest-container rule selected that wrapper on some
+    // publishers, omitting the headline/header or starting mid-article.
+    const roots = semantic.length ? independent(semantic, true) : independent(candidates, false);
+    if (roots.length) return roots;
+
+    // Some publishers expose only a <main>. Use it as one ordered article-like
+    // root after the semantic choices above have been exhausted.
+    const mains = [...document.querySelectorAll("main,[role='main']")]
+      .filter((element) => isVisible(element) && !element.closest(ARTICLE_SKIP));
+    if (mains.length) return [mains.sort((a, b) => visibleTextLength(b) - visibleTextLength(a))[0]];
+    return [document.body];
+  }
+
+  function belongsToNestedArticle(element, root, roots) {
+    return roots.some((other) => other !== root && root.contains(other) && other.contains(element));
+  }
+
+  function articleTextBlocks(root, roots) {
+    const seen = new Set();
+    const blocks = [];
+    for (const element of root.querySelectorAll(ARTICLE_BLOCKS)) {
+      // A header inside a selected article commonly owns the headline and
+      // byline; only reject headers when the body fallback is being used.
+      if (element.closest(ARTICLE_SKIP) || belongsToNestedArticle(element, root, roots)
+        || (root === document.body && element.closest("header")) || !isVisible(element)) continue;
+      // Only list containers are skipped for nested textual children. The old
+      // generic nested-selector check could discard valid paragraphs/decks
+      // wrapped with metadata or other inline article markup.
+      if (element.tagName === "LI" && element.querySelector("p,blockquote,li")) continue;
+      if (element.matches("[class*='byline' i],[class*='dateline' i]")
+        && element.querySelector("time,[rel='author'],[itemprop='author'],[itemprop='datePublished']")) continue;
+      const text = cleanNarrationText(element.innerText);
+      const key = text.toLocaleLowerCase();
+      if (text.length < 2 || seen.has(key)) continue;
+      seen.add(key);
+      const type = element.matches("h1") ? "title"
+        : element.matches("[class*='subtitle' i],[class*='subhead' i],[class*='deck' i],[class*='dek' i]") ? "deck"
+          : /^H[2-6]$/.test(element.tagName) ? "heading"
+        : element.tagName === "LI" ? "item"
+          : element.matches("time,[rel='author'],[itemprop='author'],[itemprop='datePublished'],[class*='byline' i],[class*='dateline' i]") ? "meta"
+            : "paragraph";
+      blocks.push({
+        type,
+        text,
+      });
+    }
+    return blocks;
+  }
+
+  function fallbackArticleBlocks(root, roots) {
+    // Framework pages occasionally render prose in non-semantic <div>s. Only
+    // use this fallback when ordinary paragraphs were absent, and group text by
+    // its nearest visible block container to preserve page order.
+    const blocks = [];
+    const seen = new Set();
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let node;
+    while ((node = walker.nextNode())) {
+      const parent = node.parentElement;
+      if (!parent || parent.closest(ARTICLE_SKIP) || belongsToNestedArticle(parent, root, roots) || !isVisible(parent)) continue;
+      const holder = parent.closest("p,blockquote,div,section") || parent;
+      if (!root.contains(holder) || holder.closest(ARTICLE_SKIP) || seen.has(holder)) continue;
+      // Never use a layout wrapper as a fallback block: it would repeat every
+      // descendant paragraph as one giant, disconnected snippet.
+      if (holder.matches("div,section") && holder.querySelector("div,section")) continue;
+      const text = cleanNarrationText(holder.innerText);
+      if (text.length < 40) continue;
+      seen.add(holder);
+      blocks.push({ type: "paragraph", text });
+    }
+    return blocks;
   }
 
   function extractPageText() {
-    const root = pickRoot();
-    const parts = [];
-    for (const el of root.querySelectorAll(BLOCKS)) {
-      if (el.querySelector(BLOCKS)) continue; // only leaf blocks, avoids duplicates
-      if (el.closest(SKIP)) continue;
-      if (!isVisible(el)) continue;
-      const t = (el.innerText || "").replace(/\s+/g, " ").trim();
-      if (t.length < 2 || parts[parts.length - 1] === t) continue;
-      parts.push(t);
-    }
-    let text = parts.join("\n");
-    if (text.length < 200) text = (root.innerText || "").replace(/\n{3,}/g, "\n\n").trim();
-    if (text.length < 200) text = (document.body.innerText || "").replace(/\n{3,}/g, "\n\n").trim();
-    return text.slice(0, MAX_PAGE_CHARS);
+    return [...document.body.querySelectorAll("p,h1,h2,h3,h4,h5,h6,li,blockquote,figcaption,td,th,dt,dd,summary,button,a")]
+      .filter((element) => !element.closest(TRANSLATION_SKIP) && isVisible(element))
+      .map((element) => normalizedText(element.innerText))
+      .filter((text, index, values) => text.length > 1 && values.indexOf(text) === index)
+      .join("\n").slice(0, MAX_PAGE_CHARS);
   }
 
   function extractReadAloudText() {
-    const roots = [...document.querySelectorAll("article,main,[role='main']")]
-      .filter(isVisible)
-      .sort((a, b) => (b.innerText || "").length - (a.innerText || "").length);
-    const root = roots[0] || document.body;
-    const blocks = "h1,h2,h3,h4,h5,h6,p,li,blockquote";
-    const skip = "nav,header,footer,aside,[role='navigation'],[role='toolbar'],[role='complementary'],button,input,textarea,select,option,figure,figcaption,table,caption,thead,tbody,tfoot,tr,td,th,script,style,noscript,pre,code,[hidden],[aria-hidden='true'],[id*='cookie' i],[class*='cookie' i],[id*='consent' i],[class*='consent' i]";
-    const parts = document.title ? [document.title.trim()] : [];
-    for (const element of root.querySelectorAll(blocks)) {
-      if (element.querySelector(blocks) || element.closest(skip) || !isVisible(element)) continue;
-      const text = (element.innerText || "").replace(/\s+/g, " ").trim();
-      if (text.length > 1 && parts.at(-1) !== text) parts.push(text);
+    const roots = articleRoots();
+    const parts = [];
+    for (const root of roots) {
+      let articleParts = articleTextBlocks(root, roots);
+      const bodyChars = articleParts.filter((item) => item.type === "paragraph" || item.type === "item")
+        .reduce((sum, item) => sum + item.text.length, 0);
+      if (bodyChars < 120) articleParts = fallbackArticleBlocks(root, roots);
+      // A browser title is useful only when this article has no visible
+      // headline. Do not prepend it to later articles on a multi-story page.
+      if (!articleParts.some((item) => item.type === "title" || item.type === "heading") && parts.length === 0 && document.title) {
+        articleParts.unshift({ type: "heading", text: cleanNarrationText(document.title) });
+      }
+      parts.push(...articleParts);
     }
-    return parts.join("\n").slice(0, MAX_PAGE_CHARS);
+    const blocks = [];
+    let used = 0;
+    for (const item of parts) {
+      if (used >= MAX_PAGE_CHARS) break;
+      const text = item.text.slice(0, MAX_PAGE_CHARS - used);
+      if (text) blocks.push({ ...item, text });
+      used += text.length;
+    }
+    return { text: blocks.map((item) => item.text).join("\n"), blocks };
+  }
+
+  function readableArticleSize() {
+    return articleRoots().reduce((sum, root) => sum + articleMetrics(root).bodyChars, 0);
+  }
+
+  async function waitForArticleContent() {
+    // A click can arrive while a publisher is hydrating the story body. Wait a
+    // short, bounded interval only when the page still looks title-only.
+    if (readableArticleSize() >= 180) return;
+    await new Promise((resolve) => {
+      let settled = false;
+      const finish = () => {
+        if (settled) return;
+        settled = true;
+        observer.disconnect();
+        clearTimeout(timeout);
+        resolve();
+      };
+      const observer = new MutationObserver(() => {
+        if (readableArticleSize() >= 180) finish();
+      });
+      observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+      const timeout = setTimeout(finish, 1400);
+    });
   }
 
   // Page translation changes only Text nodes. Their containing elements (including links)
@@ -145,25 +306,28 @@
 
   function collectPageSegments(maxChars = 12000) {
     restorePageText();
-    pageSegments.clear();
-    const root = pickRoot();
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    // A fresh collection belongs to the current document state. Keeping old
+    // node references would let a later apply pass touch stale/detached text.
+    pageSegments = new Map();
     const segments = [];
+    const seenNodes = new Set();
     let used = 0;
     let id = 0;
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
     let node;
-
     while ((node = walker.nextNode()) && used < maxChars) {
+      if (seenNodes.has(node)) continue;
+      seenNodes.add(node);
       const parent = node.parentElement;
       const original = node.nodeValue || "";
-      if (!parent || !original.trim() || parent.closest(SKIP) || !isVisible(parent)) continue;
-
-      const text = original.slice(0, Math.max(0, maxChars - used));
-      if (!text.trim()) continue;
+      const text = normalizedText(original);
+      if (!parent || !text || parent.closest(TRANSLATION_SKIP) || !isVisible(parent)) continue;
+      const source = original.slice(0, Math.max(0, maxChars - used));
+      if (!source.trim()) continue;
       const segmentId = String(++id);
-      pageSegments.set(segmentId, { node, original, source: text });
-      segments.push({ id: segmentId, text });
-      used += text.length;
+      pageSegments.set(segmentId, { node, original, source });
+      segments.push({ id: segmentId, text: source });
+      used += source.length;
     }
 
     return {
@@ -197,7 +361,10 @@
         lang: document.documentElement.lang || "",
       });
     } else if (msg?.type === MSG.GET_READ_ALOUD_TEXT) {
-      sendResponse({ ok: true, text: extractReadAloudText(), lang: document.documentElement.lang || "" });
+      waitForArticleContent().then(() => {
+        sendResponse({ ok: true, ...extractReadAloudText(), lang: document.documentElement.lang || "" });
+      }, () => sendResponse({ ok: false, reason: "unavailable" }));
+      return true;
     } else if (msg?.type === MSG.GET_SELECTION) {
       sendResponse({ ok: true, text: readSelection(), lang: document.documentElement.lang || "" });
     } else if (msg?.type === MSG.GET_PAGE_SEGMENTS) {
@@ -207,6 +374,9 @@
       return true;
     } else if (msg?.type === MSG.RESTORE_PAGE_TEXT) {
       swapPageView("original").then((result) => sendResponse({ ...result, restored: result.applied }));
+      return true;
+    } else if (msg?.type === MSG.SET_PAGE_TEXT_VIEW) {
+      swapPageView(msg.view).then(sendResponse);
       return true;
     } else if (msg?.type === MSG.SHOW_CACHED_PAGE) {
       swapPageView("translated").then(sendResponse);

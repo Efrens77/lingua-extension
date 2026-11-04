@@ -1,5 +1,8 @@
 import { normalizeLanguage } from "../../../core/translation/chrome.js";
 import { normalizeWord } from "../../../core/word.js";
+import { ICONS } from "../../icons.js";
+
+const SESSION_KEY = "definition.session";
 
 const TEMPLATE = `
   <section class="card definition-intro">
@@ -27,7 +30,7 @@ const TEMPLATE = `
           <p class="definition-field" data-el="phonetic" hidden></p>
         </div>
         <button type="button" class="definition-pronounce" data-el="pronounce" aria-pressed="false">
-          <span aria-hidden="true">🎙</span>
+          ${ICONS.microphone}
         </button>
       </section>
       <div data-el="entries"></div>
@@ -48,7 +51,7 @@ function reliablePageLanguage(value) {
 
 export default {
   async mount(root, ctx) {
-    const { bridge, dictionary, pronunciation, i18n, translator, sidepanelSelection } = ctx;
+    const { bridge, dictionary, pronunciation, i18n, translator, sidepanelSelection, storage } = ctx;
     const href = new URL("./definition.css", import.meta.url).href;
     if (!document.querySelector(`link[href="${href}"]`)) {
       const link = document.createElement("link");
@@ -56,19 +59,28 @@ export default {
     }
     root.innerHTML = TEMPLATE;
     const el = Object.fromEntries([...root.querySelectorAll("[data-el]")].map((node) => [node.dataset.el, node]));
+    const saved = await storage.get(SESSION_KEY, {});
     const state = {
-      active: false, word: "", pageLang: "", sourceLanguage: "", result: null, request: 0, manual: false, audio: null,
+      active: false, word: saved.word || "", pageLang: saved.pageLang || "", sourceLanguage: saved.sourceLanguage || "",
+      result: saved.result || null, request: 0, manual: Boolean(saved.manual), audio: null, pageAudioActive: false, pageAudioStatus: "idle", pageAudioTabId: null,
+      message: saved.message || "",
     };
 
     const t = (key) => i18n.t(key);
+    const persist = () => storage.set(SESSION_KEY, {
+      word: state.word, pageLang: state.pageLang, sourceLanguage: state.sourceLanguage,
+      result: state.result, manual: state.manual, message: state.message,
+    }).catch((error) => console.error("[Lingua] couldn't save Define state:", error));
     function localizeStatic() {
       el.wordLabel.textContent = t("definitionWord");
       el.word.placeholder = t("definitionWordPlaceholder");
       el.lookup.textContent = t("definitionLookup");
       el.languagePrompt.textContent = t("definitionChooseLanguage");
       el.languageLookup.textContent = t("definitionLookup");
+      el.word.value = state.word;
       if (state.result) renderResult(state.result);
-      else if (!state.word) hideResult();
+      else if (state.message) showMessage(state.message);
+      else hideResult();
     }
 
     function hideResult() {
@@ -76,6 +88,8 @@ export default {
       el.result.hidden = true;
       el.content.hidden = true;
       el.message.textContent = "";
+      state.message = "";
+      persist();
     }
 
     function showMessage(message) {
@@ -84,6 +98,8 @@ export default {
       el.content.hidden = true;
       el.message.hidden = false;
       el.message.textContent = message;
+      state.message = message;
+      persist();
     }
 
     function hideLanguageChoice() {
@@ -118,6 +134,7 @@ export default {
       el.phonetic.hidden = !result.phonetic;
       el.phonetic.textContent = result.phonetic ? t("definitionPhonetic") + ": /" + result.phonetic + "/" : "";
       el.pronounce.setAttribute("aria-label", t("pronouncePlay") + ": " + result.word);
+      updatePronunciationAvailability();
       el.entries.replaceChildren();
       for (const entry of result.entries) {
         const section = document.createElement("section");
@@ -193,20 +210,35 @@ export default {
           license.textContent = attribution.license; el.audioAttribution.append(" · ", license);
         }
       }
+      state.message = "";
+      persist();
     }
 
     function stopPronunciation() {
-      pronunciation.stopSpeech();
+      // Only stop audio owned by this tab. Calling global speechSynthesis.cancel()
+      // with no local audio can also cancel Full Page's offscreen narration.
       state.audio?.pause?.();
       state.audio = null;
       el.pronounce?.setAttribute("aria-pressed", "false");
       if (state.result) el.pronounce?.setAttribute("aria-label", t("pronouncePlay") + ": " + state.result.word);
     }
 
+    function updatePronunciationAvailability() {
+      const blocked = state.pageAudioActive;
+      el.pronounce.disabled = blocked;
+      el.pronounce.title = blocked ? t("otherAudioBlocked") : "";
+      if (blocked) el.pronounce.setAttribute("aria-label", t("otherAudioBlocked"));
+      else if (state.result) el.pronounce.setAttribute("aria-label", t("pronouncePlay") + ": " + state.result.word);
+    }
+
     function playPronunciation() {
+      if (state.pageAudioActive) return;
       const result = state.result;
       if (!result) return;
       if (state.audio) { stopPronunciation(); return; }
+      // A paused Full Page session is intentionally retained for Resume.  Only
+      // replace audio owned by another side-panel feature.
+      window.dispatchEvent(new CustomEvent("lingua-side-audio-start", { detail: { owner: "definition" } }));
       const fallback = () => {
         const started = pronunciation.speakText(result.word, result.sourceLanguage, {
           onEnd: stopPronunciation, onError: stopPronunciation,
@@ -273,6 +305,8 @@ export default {
       state.word = valid;
       state.pageLang = pageLang;
       state.manual = manual;
+      state.message = "";
+      persist();
       el.word.value = valid;
       hideLanguageChoice();
       showMessage(t("definitionLoading"));
@@ -304,6 +338,7 @@ export default {
         if (request !== state.request) return;
         state.sourceLanguage = sourceLanguage;
         state.result = result;
+        state.message = "";
         renderResult(result);
         pronunciation.lookupPronunciation({ word: valid, sourceLanguage }).then((pronunciationResult) => {
           if (request !== state.request || state.result !== result) return;
@@ -340,6 +375,8 @@ export default {
       state.result = null;
       state.word = "";
       state.manual = true;
+      state.message = "";
+      persist();
       hideLanguageChoice();
       const valid = normalizeWord(el.word.value);
       if (!el.word.value.trim()) hideResult();
@@ -350,6 +387,19 @@ export default {
       if (event.key === "Enter") lookup(el.word.value, "", { manual: true });
     });
     el.pronounce.addEventListener("click", playPronunciation);
+    window.addEventListener("lingua-page-audio-start", stopPronunciation);
+    window.addEventListener("lingua-side-audio-start", (event) => {
+      if (event.detail?.owner !== "definition") stopPronunciation();
+    });
+    bridge.watchReadAloud(async (readState) => {
+      const tab = await bridge.getActiveTab().catch(() => null);
+      if (!tab?.id || readState?.tabId !== tab.id) return;
+      state.pageAudioTabId = readState.tabId;
+      state.pageAudioStatus = readState.status;
+      state.pageAudioActive = readState.status === "playing"
+        || (readState.status === "seeking" && Boolean(readState.willResume));
+      updatePronunciationAvailability();
+    });
     bridge.watchSelection((text, _tab, details) => useSelection(text, details));
     document.addEventListener("selectionchange", () => {
       if (!state.active) return;
@@ -365,6 +415,7 @@ export default {
       if (state.word) lookup(state.word, state.pageLang, { manual: state.manual });
     });
     localizeStatic();
+    bridge.readAloudCommand({ action: "state" }).catch(() => {});
 
     return {
       async activate() {

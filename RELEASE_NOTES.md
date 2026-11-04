@@ -5,7 +5,18 @@
 - The standalone Pronounce tab was intentionally removed: pronunciation is more useful in the context of a Define result.
 - Define now has pronunciation playback, preferring matching Wiktionary/Wikimedia recordings and falling back to browser speech synthesis.
 - Translate now has Full Page read-aloud for the visible original or translated main page content.
-- Full Page Original/Translated switching now reuses the page’s cached text mapping, batches text updates, preserves scroll position, and avoids a new translation request when no new translation is needed.
+- Full Page Original/Translated switching now reuses the page’s cached text mapping, batches view requests, preserves scroll position, and avoids a new translation when the cached mapping is still available.
+- Full Page read-aloud now supports Stop/Resume, Restart, estimated progress and seeking, structured narration pauses, and playback that continues when the side panel closes.
+- Refined Full Page read-aloud with centralized idle, playing, paused, seeking, and finished states; Restart and Original/Translated switching now reset cleanly to the single Read aloud button without restarting speech.
+- The read-aloud controls now keep Stop/Resume and Restart above a stable separate progress slider row. Seeking preserves whether narration was playing or paused, and stale cancelled-speech events no longer reset the controls.
+- Define and Phrase playback controls are temporarily disabled while Full Page read-aloud owns audio, while their non-audio tools remain available.
+- Define now uses Lingua’s consistent inline microphone icon for pronunciation playback.
+- Full Page now resets to Original text and idle read-aloud for a reload, navigation, or browser-tab change; it waits for an explicit Translated text click on the newly active page.
+- Improved the read-aloud seek slider so drag previews are not overwritten by playback updates, and expanded editorial extraction to handle deduplicated multi-article pages.
+- Read Aloud now clears stale status notices after a successful start, waits briefly for browser voices, and ignores expected cancellation/interruption callbacks.
+- Phrase and Define pronunciation controls are disabled only while Full Page narration is actively playing; they remain usable while it is paused.
+- Fixed a shared SpeechSynthesis cancellation regression that could silence Full Page, Phrase, and Define audio or leave an inactive Full Page session appearing to play. Full Page now ignores only its own stale callbacks, releases unexpected cancellations back to an idle state, and does not cancel Phrase or Define audio while its narration is paused.
+- Full Page Read Aloud now keeps semantic article headers with their associated body containers, reads qualifying consecutive articles in page order, waits briefly for hydrated body copy, and excludes media, data widgets, prompts, and non-editorial modules more reliably. Playback progress now uses monotonic millisecond checkpoints with smooth panel interpolation, preventing backward thumb/time jumps from delayed speech-boundary events.
 
 ## Privacy and data
 

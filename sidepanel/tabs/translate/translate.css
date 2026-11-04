@@ -84,9 +84,12 @@
 }
 .actions { display: flex; gap: 2px; margin-top: 8px; }
 .actions .icon-btn { color: var(--teal); }
-.page-read { display: flex; justify-content: stretch; }
+.page-read { display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
 .page-read button { width: 100%; padding: 10px 12px; border: 1px solid var(--teal); border-radius: 11px; background: var(--teal); color: #fff; font: inherit; font-weight: 700; }
 .page-read button[aria-pressed="true"] { background: var(--teal-strong); }
+.page-read-controls { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%; }
+.page-read-progress { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; width: 100%; font-size: .75rem; color: var(--text-2); }
+.page-read-progress input { min-width: 0; accent-color: var(--teal); }
 
 /* recent */
 .section-label {

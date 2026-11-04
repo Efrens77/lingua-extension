@@ -52,14 +52,14 @@ const PRONUNCIATION_STRINGS = {
 };
 
 const READ_ALOUD_STRINGS = {
-  en: { readAloud:"Read aloud", stopReading:"Stop reading", readAloudUnavailable:"Lingua could not read this page aloud right now." },
-  es: { readAloud:"Leer en voz alta", stopReading:"Dejar de leer", readAloudUnavailable:"Lingua no puede leer esta página en voz alta ahora mismo." },
-  fr: { readAloud:"Lire à voix haute", stopReading:"Arrêter la lecture", readAloudUnavailable:"Lingua ne peut pas lire cette page à voix haute pour le moment." },
-  de: { readAloud:"Vorlesen", stopReading:"Vorlesen beenden", readAloudUnavailable:"Lingua kann diese Seite gerade nicht vorlesen." },
-  pt: { readAloud:"Ler em voz alta", stopReading:"Parar leitura", readAloudUnavailable:"O Lingua não pode ler esta página em voz alta agora." },
-  zh: { readAloud:"朗读", stopReading:"停止朗读", readAloudUnavailable:"Lingua 目前无法朗读此页面。" },
-  ja: { readAloud:"読み上げる", stopReading:"読み上げを停止", readAloudUnavailable:"Lingua は現在このページを読み上げられません。" },
-  ko: { readAloud:"소리 내어 읽기", stopReading:"읽기 중지", readAloudUnavailable:"Lingua가 지금 이 페이지를 소리 내어 읽을 수 없습니다." },
+  en: { readAloud:"Read aloud", stopReading:"Stop", resumeReading:"Resume", restartReading:"Restart", readAloudUnavailable:"Lingua could not read this page aloud right now.", otherAudioBlocked:"Stop Full Page Read Aloud to play other audio." },
+  es: { readAloud:"Leer en voz alta", stopReading:"Detener", resumeReading:"Reanudar", restartReading:"Reiniciar", readAloudUnavailable:"Lingua no puede leer esta página en voz alta ahora mismo.", otherAudioBlocked:"Detén la lectura de página completa para reproducir otro audio." },
+  fr: { readAloud:"Lire à voix haute", stopReading:"Arrêter", resumeReading:"Reprendre", restartReading:"Recommencer", readAloudUnavailable:"Lingua ne peut pas lire cette page à voix haute pour le moment.", otherAudioBlocked:"Arrêtez la lecture de la page entière pour lire un autre audio." },
+  de: { readAloud:"Vorlesen", stopReading:"Stopp", resumeReading:"Fortsetzen", restartReading:"Neu starten", readAloudUnavailable:"Lingua kann diese Seite gerade nicht vorlesen.", otherAudioBlocked:"Beenden Sie die Seitenvorlesung, um anderes Audio abzuspielen." },
+  pt: { readAloud:"Ler em voz alta", stopReading:"Parar", resumeReading:"Retomar", restartReading:"Reiniciar", readAloudUnavailable:"O Lingua não pode ler esta página em voz alta agora.", otherAudioBlocked:"Pare a leitura da página inteira para reproduzir outro áudio." },
+  zh: { readAloud:"朗读", stopReading:"停止", resumeReading:"继续", restartReading:"重新开始", readAloudUnavailable:"Lingua 目前无法朗读此页面。", otherAudioBlocked:"请先停止整页朗读，再播放其他音频。" },
+  ja: { readAloud:"読み上げる", stopReading:"停止", resumeReading:"再開", restartReading:"最初から", readAloudUnavailable:"Lingua は現在このページを読み上げられません。", otherAudioBlocked:"ほかの音声を再生するには、ページ全体の読み上げを停止してください。" },
+  ko: { readAloud:"소리 내어 읽기", stopReading:"중지", resumeReading:"계속", restartReading:"다시 시작", readAloudUnavailable:"Lingua가 지금 이 페이지를 소리 내어 읽을 수 없습니다.", otherAudioBlocked:"다른 오디오를 재생하려면 전체 페이지 읽기를 중지하세요." },
 };
 
 function supportedBrowserLanguage() {
