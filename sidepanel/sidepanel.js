@@ -127,7 +127,7 @@ async function activate(id) {
   if (!tab?.enabled) return;
 
   if (activeId) {
-    mounted.get(activeId)?.controller.deactivate?.();
+    mounted.get(activeId)?.controller.deactivate?.(id);
     mounted.get(activeId).panel.hidden = true;
   }
   activeId = id;

@@ -3,7 +3,7 @@
   "name": "Lingua",
   "version": "0.3.0",
   "description": "Translate pages and phrases, define or pronounce a selected word, in a side panel that stays open while you browse.",
-  "permissions": ["sidePanel", "storage", "scripting", "offscreen"],
+  "permissions": ["sidePanel", "storage", "scripting", "offscreen", "tts"],
   "host_permissions": ["<all_urls>"],
   "background": { "service_worker": "background.js", "type": "module" },
   "action": {

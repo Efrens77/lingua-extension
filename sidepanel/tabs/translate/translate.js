@@ -8,6 +8,7 @@ import { LIMITS } from "../../../core/config.js";
 import { ICONS } from "../../icons.js";
 
 const PREFS_KEY = "translate.prefs";
+const PHRASE_SESSION_KEY = "translate.phrase-session";
 const RECENT_KEY = "translate.recent";
 const MAX_RECENT = 5;
 const TYPING_DELAY_MS = 600;
@@ -68,7 +69,16 @@ const TEMPLATE = `
     </div>
   </section>
   <section class="page-read" data-el="pageRead" hidden>
-    <button type="button" data-el="readAloud" aria-pressed="false">Read aloud</button>
+    <button type="button" data-el="readAloud">Read aloud</button>
+    <div class="page-read-controls" data-el="readControls" hidden>
+      <button type="button" data-el="readStop">Stop</button>
+      <button type="button" data-el="readRestart">Restart</button>
+    </div>
+    <div class="page-read-progress" data-el="readProgress" hidden>
+      <span data-el="readElapsed">0:00</span>
+      <input type="range" data-el="readSeek" min="0" max="1" step="0.1" value="0" aria-label="Reading progress" />
+      <span data-el="readDuration">0:00</span>
+    </div>
   </section>
 
   <section class="recent" data-el="recentSection" hidden>
@@ -98,7 +108,7 @@ function optionHtml(list, withAuto, i18n) {
 
 export default {
   async mount(root, ctx) {
-    const { bridge, storage, translator, pronunciation, i18n } = ctx;
+    const { bridge, storage, translator, i18n } = ctx;
     loadStylesheet();
     root.innerHTML = TEMPLATE;
 
@@ -121,8 +131,7 @@ export default {
       el.clear.setAttribute("aria-label", t("clear")); el.clear.title = t("clear");
       el.copy.setAttribute("aria-label", t("copy")); el.copy.title = t("copy");
       el.speak.setAttribute("aria-label", t("listen")); el.speak.title = t("listen");
-      el.readAloud.textContent = state.pageReading ? t("stopReading") : t("readAloud");
-      el.readAloud.setAttribute("aria-label", state.pageReading ? t("stopReading") : t("readAloud"));
+      renderReadAloud();
       root.querySelector(".section-label").textContent = t("recent");
       el.hint.textContent = hintFor(state.mode);
       renderLanguageOptions();
@@ -131,23 +140,25 @@ export default {
     }
 
     const saved = await storage.get(PREFS_KEY, {});
+    const savedPhrase = await storage.get(PHRASE_SESSION_KEY, {});
     const state = {
       mode: saved.mode === "phrase" ? "phrase" : "page",
       from: saved.from && (saved.from === AUTO_CODE || isSupported(saved.from)) ? saved.from : AUTO_CODE,
       to: saved.to && isSupported(saved.to) ? saved.to : defaultTarget(),
-      text: { page: "", phrase: "" },
+      text: { page: "", phrase: String(savedPhrase.text || "") },
       pageState: null,
       pageView: "original",
       pageMeta: null,
       detected: null,
-      result: "",
-      lastKey: "",
+      result: saved.mode === "phrase" ? String(savedPhrase.result || "") : "",
+      lastKey: saved.mode === "phrase" ? String(savedPhrase.lastKey || "") : "",
       lastPageId: "",
       runId: 0,
       controller: null,
       active: false,
       recent: await storage.get(RECENT_KEY, []),
-      pageReading: false,
+      pageReading: false, pageAudioBlocking: false, phraseSpeaking: false, readState: null, sliderPhase: "none", sliderPreview: 0, readWasPlaying: false, readCommandToken: 0, invalidReadSessions: new Set(), activeTabId: null, pageViewToken: 0,
+      progressSessionId: "", progressRevision: -1, progressFloor: 0,
     };
     let runTimer = null;
     let recentTimer = null;
@@ -155,6 +166,14 @@ export default {
 
     const limit = () => (state.mode === "page" ? LIMITS.page : LIMITS.phrase);
     const persist = () => storage.set(PREFS_KEY, { mode: state.mode, from: state.from, to: state.to });
+    const persistPhrase = () => {
+      const next = {
+        text: state.text.phrase, result: state.mode === "phrase" ? state.result : savedPhrase.result || "",
+        lastKey: state.mode === "phrase" ? state.lastKey : savedPhrase.lastKey || "",
+      };
+      Object.assign(savedPhrase, next);
+      return storage.set(PHRASE_SESSION_KEY, next);
+    };
 
     // ---------- rendering ----------
     function syncSelects() {
@@ -250,31 +269,117 @@ export default {
     }
 
     function stopPageRead() {
-      pronunciation.stopSpeech();
+      bridge.readAloudCommand({ action: "pause", tabId: state.activeTabId }).catch(() => {});
+      if (state.readState?.status === "playing") state.readState = { ...state.readState, status: "paused" };
       state.pageReading = false;
-      el.readAloud?.setAttribute("aria-pressed", "false");
-      el.readAloud && (el.readAloud.textContent = t("readAloud"));
-      el.readAloud?.setAttribute("aria-label", t("readAloud"));
+      renderReadAloud();
+    }
+
+    function resetPageRead() {
+      state.readCommandToken++;
+      if (state.readState?.sessionId) state.invalidReadSessions.add(state.readState.sessionId);
+      const tabId = state.activeTabId ?? Number(state.lastPageId.split("|")[0]);
+      if (Number.isInteger(tabId)) bridge.readAloudCommand({ action: "reset", tabId }).catch(() => {});
+      state.readState = state.readState ? { ...state.readState, status: "idle", elapsed: 0, elapsedMs: 0 } : null;
+      state.progressFloor = 0;
+      state.pageReading = false;
+      state.pageAudioBlocking = false;
+      state.sliderPhase = "none";
+      renderReadAloud();
+    }
+
+    function time(value) {
+      const seconds = Math.max(0, Math.floor(Number(value) || 0));
+      return Math.floor(seconds / 60) + ":" + String(seconds % 60).padStart(2, "0");
+    }
+
+    function checkpointElapsed(read) {
+      return Math.max(0, Number.isFinite(Number(read?.elapsedMs))
+        ? Number(read.elapsedMs) / 1000 : Number(read?.elapsed) || 0);
+    }
+
+    function setReadState(read, { allowRewind = false } = {}) {
+      const incomingRevision = Number(read?.revision || 0);
+      if (!allowRewind && read?.sessionId === state.progressSessionId && incomingRevision < state.progressRevision) return false;
+      if (!allowRewind && read?.sessionId !== state.progressSessionId && state.readState?.updatedAt
+        && Number(read?.updatedAt || 0) < Number(state.readState.updatedAt)) return false;
+      const sessionChanged = read?.sessionId !== state.progressSessionId || Number(read?.revision || 0) !== state.progressRevision;
+      const checkpoint = checkpointElapsed(read);
+      if (sessionChanged || allowRewind) {
+        state.progressSessionId = read?.sessionId || "";
+        state.progressRevision = incomingRevision;
+        state.progressFloor = checkpoint;
+      } else {
+        state.progressFloor = Math.max(state.progressFloor, checkpoint);
+      }
+      state.readState = read;
+      return true;
+    }
+
+    function displayedElapsed(read) {
+      if (!read) return 0;
+      const checkpoint = checkpointElapsed(read);
+      if (read.status !== "playing" || !read.updatedAt) return Math.max(state.progressFloor, checkpoint);
+      const elapsed = checkpoint + Math.max(0, Date.now() - Number(read.updatedAt)) / 1000;
+      const next = Math.min(Number(read.duration) || elapsed, Math.max(state.progressFloor, elapsed));
+      state.progressFloor = next;
+      return next;
+    }
+
+    function isPageAudioBlocking(read) {
+      return read?.status === "playing" || (read?.status === "seeking" && read.willResume);
+    }
+
+    function renderReadAloud() {
+      const read = state.readState;
+      const visible = Boolean(read && ["playing", "paused", "seeking"].includes(read.status));
+      el.readAloud.hidden = visible;
+      el.readControls.hidden = !visible;
+      el.readProgress.hidden = !visible;
+      el.readAloud.textContent = t("readAloud"); el.readAloud.setAttribute("aria-label", t("readAloud"));
+      const pageAudioActive = isPageAudioBlocking(read);
+      el.speak.disabled = pageAudioActive;
+      el.speak.title = pageAudioActive ? t("otherAudioBlocked") : t("listen");
+      el.speak.setAttribute("aria-label", pageAudioActive ? t("otherAudioBlocked") : t("listen"));
+      if (!visible) return;
+      const paused = read.status === "paused";
+      el.readStop.textContent = paused ? t("resumeReading") : t("stopReading");
+      el.readStop.setAttribute("aria-label", paused ? t("resumeReading") : t("stopReading"));
+      el.readRestart.textContent = t("restartReading"); el.readRestart.setAttribute("aria-label", t("restartReading"));
+      el.readSeek.max = String(Math.max(1, read.duration || 1));
+      const previewing = state.sliderPhase !== "none";
+      const elapsed = displayedElapsed(read);
+      if (!previewing) el.readSeek.value = String(elapsed.toFixed(1));
+      el.readElapsed.textContent = time(previewing ? state.sliderPreview : elapsed);
+      el.readDuration.textContent = time(read.duration);
+    }
+
+    function narrationChunks(blocks) {
+      return (blocks || []).map((block) => ({
+        text: String(block.text || "").replace(/[•—–-]{2,}/g, " ").replace(/\s+/g, " ").trim(),
+        pause: ["title", "deck", "heading"].includes(block.type) ? 420 : block.type === "item" ? 240 : 180,
+      })).filter((block) => block.text);
     }
 
     async function readPageAloud() {
-      if (state.pageReading) { stopPageRead(); return; }
       try {
         const tab = await bridge.getActiveTab();
         if (!isUsablePageTab(tab)) { showPageMessage(t("regularPage")); return; }
+        state.activeTabId = tab.id;
         const res = await bridge.getReadAloudText(tab);
-        const text = res?.ok ? String(res.text || "").trim() : "";
-        if (!text) { showPageMessage(t("readAloudUnavailable")); return; }
+        const chunks = narrationChunks(res?.blocks);
+        if (!res?.ok || !chunks.length) { showPageMessage(t("readAloudUnavailable")); return; }
         const language = state.pageView === "translated" ? state.to : (state.detected || res.lang || "en");
-        const started = pronunciation.speakChunks(text, language, {
-          onEnd: stopPageRead,
-          onError: () => { stopPageRead(); showPageMessage(t("readAloudUnavailable")); },
-        });
-        if (!started) { showPageMessage(t("readAloudUnavailable")); return; }
-        state.pageReading = true;
-        el.readAloud.setAttribute("aria-pressed", "true");
-        el.readAloud.textContent = t("stopReading");
-        el.readAloud.setAttribute("aria-label", t("stopReading"));
+        // A previous benign status must not outlive a successful user request.
+        setPageProgress();
+        // Full Page owns Chrome's extension TTS queue. Clear Phrase audio
+        // before starting it, never after narration has announced itself.
+        if (state.phraseSpeaking) bridge.phraseAudioCommand({ action: "stop" }).catch(() => {});
+        state.phraseSpeaking = false;
+        window.dispatchEvent(new Event("lingua-page-audio-start"));
+        const started = await bridge.readAloudCommand({ action: "start", tabId: tab.id, chunks, language });
+        if (started?.ok) setPageProgress();
+        else if (started?.reason !== "cancelled") showPageMessage(t("readAloudUnavailable"));
       } catch (error) {
         console.error("[Lingua] page read-aloud failed:", error);
         showPageMessage(t("readAloudUnavailable"));
@@ -370,6 +475,7 @@ export default {
         state.result = res.text;
         state.lastKey = key;
         state.detected = state.from === AUTO_CODE ? res.detectedFrom : null;
+        persistPhrase();
         renderSource();
         setResult("done");
         if (state.mode === "phrase") queueRecent(text, res.text);
@@ -384,7 +490,6 @@ export default {
     }
 
     async function runPageTranslation({ force = false } = {}) {
-      stopPageRead();
       try {
         const tab = await bridge.getActiveTab();
         if (!isUsablePageTab(tab)) {
@@ -392,6 +497,8 @@ export default {
           return;
         }
         state.lastPageId = `${tab.id}|${tab.url}`;
+        state.activeTabId = tab.id;
+        resetPageRead();
         setPageProgress(0);
         const res = await bridge.translatePage(tab, state.to);
         if (!res?.ok) {
@@ -412,25 +519,29 @@ export default {
 
     async function setPageView(view) {
       if (state.mode !== "page") return;
-      stopPageRead();
-      if (view === "translated") {
-        runPageTranslation();
-        return;
-      }
+      const token = ++state.pageViewToken;
+      resetPageRead();
       try {
         const tab = await bridge.getActiveTab();
         if (!isUsablePageTab(tab) || `${tab.id}|${tab.url}` !== state.lastPageId) return;
-        const res = await bridge.restorePage(tab);
+        state.activeTabId = tab.id;
+        const res = await bridge.setPageView(tab, view);
+        if (token !== state.pageViewToken || state.mode !== "page") return;
         if (!res?.ok) {
+          if (view === "translated") {
+            runPageTranslation();
+            return;
+          }
           console.error("[Lingua] page restore failed:", res?.error || res?.reason);
           showPageMessage("Lingua couldn't restore this page. Try reloading it.");
           return;
         }
-        state.pageState = null;
-        state.pageView = "original";
+        state.pageState = view === "translated" ? res.state : null;
+        state.pageView = view;
         renderSource();
         setPageProgress();
       } catch (err) {
+        if (token !== state.pageViewToken) return;
         console.error("[Lingua] page restore failed:", err);
         showPageMessage("Lingua couldn't restore this page. Try reloading it.");
       }
@@ -448,7 +559,7 @@ export default {
     }
 
     // ---------- importing text from the page ----------
-    async function importPage({ translateIfNew = false } = {}) {
+    async function importPage() {
       const token = ++importToken;
       try {
         const tab = await bridge.getActiveTab();
@@ -461,17 +572,24 @@ export default {
           showPageMessage(t("regularPage"));
           return;
         }
+        const nextPageId = `${tab.id}|${tab.url}`;
+        if (state.lastPageId && state.lastPageId !== nextPageId) {
+          resetPageRead();
+          state.pageState = null;
+          state.pageView = "original";
+        }
         const res = await bridge.getPageState(tab);
         if (token !== importToken || state.mode !== "page") return;
         const pageState = res?.ok && res.state && typeof res.state.url === "string" && typeof res.state.view === "string"
           ? res.state
           : null;
-        state.lastPageId = `${tab.id}|${tab.url}`;
+        state.lastPageId = nextPageId;
+        state.activeTabId = tab.id;
         state.pageState = pageState?.url === tab.url && pageState.view === "translated" ? pageState : null;
         state.pageView = state.pageState ? "translated" : "original";
         renderSource();
         setPageProgress();
-        if (translateIfNew && !state.pageState) runPageTranslation();
+        // A newly active page always waits for an explicit Translated text click.
       } catch (err) {
         if (token !== importToken || state.mode !== "page") return;
         console.error("[Lingua] couldn't read page translation state:", err);
@@ -481,6 +599,9 @@ export default {
 
     function setPhrase(text) {
       state.text.phrase = text.slice(0, LIMITS.phrase);
+      state.result = "";
+      state.lastKey = "";
+      persistPhrase();
       renderSource();
       scheduleRun(0);
     }
@@ -494,20 +615,23 @@ export default {
 
     // ---------- mode ----------
     function applyMode(mode, { import: doImport = true } = {}) {
-      stopPageRead();
+      if (state.mode === "phrase") persistPhrase();
       state.mode = mode;
       for (const b of modeButtons) b.setAttribute("aria-checked", String(b.dataset.mode === mode));
       el.hint.textContent = hintFor(mode);
-      state.result = "";
-      state.lastKey = "";
+      state.result = mode === "phrase" ? String(savedPhrase.result || "") : "";
+      state.lastKey = mode === "phrase" ? String(savedPhrase.lastKey || "") : "";
       state.detected = null;
       persist();
       renderSource();
+      // The Phrase speaker remains in this mounted view when users switch
+      // modes, so immediately apply the existing Full Page ownership state.
+      renderReadAloud();
       renderRecent();
-      setResult("empty");
+      setResult(state.result ? "done" : "empty");
       if (!doImport) return;
       if (mode === "page") importPage();
-      else importSelection().finally(() => scheduleRun(0));
+      else if (!state.text.phrase) importSelection().finally(() => scheduleRun(0));
     }
 
     // ---------- events ----------
@@ -525,12 +649,50 @@ export default {
     el.to.addEventListener("change", () => {
       state.to = el.to.value;
       persist();
-      if (state.mode === "page") runPageTranslation();
-      else scheduleRun(0);
+      if (state.mode === "page") {
+        if (state.pageView === "translated") runPageTranslation();
+        return;
+      }
+      scheduleRun(0);
     });
     el.translatedView.addEventListener("click", () => setPageView("translated"));
     el.originalView.addEventListener("click", () => setPageView("original"));
     el.readAloud.addEventListener("click", readPageAloud);
+    el.readStop.addEventListener("click", () => {
+      const action = state.readState?.status === "paused" ? "resume" : "pause";
+      bridge.readAloudCommand({ action, tabId: state.activeTabId }).catch(() => {});
+    });
+    el.readRestart.addEventListener("click", resetPageRead);
+    el.readSeek.addEventListener("pointerdown", () => {
+      state.readWasPlaying = state.readState?.status === "playing";
+    });
+    el.readSeek.addEventListener("input", () => {
+      if (state.sliderPhase === "none") state.readWasPlaying = state.readState?.status === "playing";
+      state.sliderPhase = "dragging";
+      state.sliderPreview = Number(el.readSeek.value);
+      renderReadAloud();
+    });
+    el.readSeek.addEventListener("change", async () => {
+      const resume = state.readWasPlaying;
+      const seconds = Number(el.readSeek.value);
+      const commandToken = ++state.readCommandToken;
+      state.sliderPhase = "seeking";
+      state.sliderPreview = seconds;
+      renderReadAloud();
+      try {
+        const response = await bridge.readAloudCommand({ action: "seek", tabId: state.activeTabId, seconds, resume });
+        if (commandToken === state.readCommandToken && response?.state?.tabId === state.activeTabId) {
+          setReadState(response.state, { allowRewind: true });
+        }
+      } catch (error) {
+        console.error("[Lingua] read-aloud seek failed:", error);
+      } finally {
+        if (commandToken === state.readCommandToken) {
+          state.sliderPhase = "none";
+          renderReadAloud();
+        }
+      }
+    });
     el.swap.addEventListener("click", () => {
       const newTo = state.from === AUTO_CODE ? state.detected : state.from;
       if (!newTo || !isSupported(newTo)) {
@@ -547,12 +709,18 @@ export default {
     el.source.addEventListener("input", () => {
       if (state.mode !== "phrase") return;
       state.text.phrase = el.source.value;
+      state.result = "";
+      state.lastKey = "";
+      persistPhrase();
       el.clear.hidden = !el.source.value;
       el.count.textContent = `${el.source.value.length.toLocaleString()} / ${limit().toLocaleString()}`;
       scheduleRun(TYPING_DELAY_MS);
     });
     el.clear.addEventListener("click", () => {
       state.text.phrase = "";
+      state.result = "";
+      state.lastKey = "";
+      persistPhrase();
       renderSource();
       scheduleRun(0);
       el.source.focus();
@@ -565,22 +733,33 @@ export default {
       setTimeout(() => (el.copy.innerHTML = ICONS.copy), 1200);
     });
     function setSpeaking(on) {
+      state.phraseSpeaking = on;
       el.speak.innerHTML = on ? ICONS.stop : ICONS.speaker;
       el.speak.setAttribute("aria-label", on ? "Stop listening" : "Listen to translation");
     }
     el.speak.addEventListener("click", () => {
-      const synth = window.speechSynthesis;
-      if (synth.speaking) {
-        synth.cancel();
+      if (el.speak.disabled) return;
+      if (state.phraseSpeaking) {
+        bridge.phraseAudioCommand({ action: "stop" }).catch(() => {});
         setSpeaking(false);
         return;
       }
       if (!state.result) return;
-      const utterance = new SpeechSynthesisUtterance(state.result.slice(0, 3000));
-      utterance.lang = state.to;
-      utterance.onend = utterance.onerror = () => setSpeaking(false);
-      synth.speak(utterance);
-      setSpeaking(true);
+      // A paused Full Page session owns no active utterance and must remain
+      // resumable.  Tell other side-panel audio owners to stop instead of
+      // cancelling the browser-wide speech queue.
+      window.dispatchEvent(new CustomEvent("lingua-side-audio-start", { detail: { owner: "phrase" } }));
+      bridge.phraseAudioCommand({ action: "start", text: state.result, language: state.to })
+        .then((result) => setSpeaking(Boolean(result?.ok)))
+        .catch(() => setSpeaking(false));
+    });
+    window.addEventListener("lingua-side-audio-start", (event) => {
+      if (event.detail?.owner === "phrase" || !state.phraseSpeaking) return;
+      bridge.phraseAudioCommand({ action: "stop" }).catch(() => {});
+      setSpeaking(false);
+    });
+    bridge.watchPhraseAudio((phraseState) => {
+      if (phraseState?.status !== "playing") setSpeaking(false);
     });
 
     // Highlighted text on the page (Phrase mode only).
@@ -591,12 +770,29 @@ export default {
     });
 
     // Tab switches / page loads.
-    bridge.watchActiveTab((tab) => {
-      stopPageRead();
-      if (!state.active || !tab) return;
+    bridge.watchActiveTab(async (tab) => {
+      if (!tab) return;
+      if (state.activeTabId && tab.id !== state.activeTabId) {
+        const previousUrl = state.lastPageId.includes("|")
+          ? state.lastPageId.slice(state.lastPageId.indexOf("|") + 1) : "";
+        if (previousUrl) {
+          bridge.restorePage({ id: state.activeTabId, url: previousUrl })
+            .catch((error) => console.error("[Lingua] couldn't restore the previous tab:", error));
+        }
+        resetPageRead();
+        state.lastPageId = "";
+        state.pageState = null;
+        state.pageView = "original";
+        state.readState = null;
+        if (isUsablePageTab(tab)) {
+          try { await bridge.restorePage(tab); }
+          catch (error) { console.error("[Lingua] couldn't reset Full Page state for a new tab:", error); }
+        }
+      }
+      if (!state.active) return;
       if (state.mode === "page") {
         importPage();
-      } else {
+      } else if (!state.text.phrase) {
         importSelection();
       }
     });
@@ -616,6 +812,30 @@ export default {
         setPageProgress(0, message.message);
       }
     });
+    bridge.watchReadAloud((readState) => {
+      if (!readState || !state.activeTabId || readState.tabId !== state.activeTabId) return;
+      if (state.invalidReadSessions.has(readState.sessionId)) return;
+      // Boundary updates from the utterance that was running before a drag are
+      // not allowed to overwrite the thumb the user is actively moving.
+      if (state.sliderPhase !== "none"
+        && readState.sessionId === state.readState?.sessionId) return;
+      if (!setReadState(readState)) return;
+      state.pageReading = readState.status === "playing";
+      const blocking = isPageAudioBlocking(readState);
+      if (blocking && !state.pageAudioBlocking) {
+        // Other controls are disabled from this state update. Do not cancel the
+        // shared speech queue here: this message is emitted by the narrator.
+      }
+      state.pageAudioBlocking = blocking;
+      renderReadAloud();
+      if (readState.status === "error") showPageMessage(t("readAloudUnavailable"));
+    });
+
+    // The service worker publishes state frequently, but this local paint loop
+    // keeps the visible thumb smooth even when a platform TTS event is delayed.
+    const progressRenderTimer = setInterval(() => {
+      if (state.active && state.readState?.status === "playing" && state.sliderPhase === "none") renderReadAloud();
+    }, 100);
 
     // ---------- initial paint ----------
     syncSelects();
@@ -623,21 +843,24 @@ export default {
     el.hint.textContent = hintFor(state.mode);
     for (const b of modeButtons) b.setAttribute("aria-checked", String(b.dataset.mode === state.mode));
     renderSource();
-    setResult("empty");
+    setResult(state.result ? "done" : "empty");
     i18n.subscribe(localize);
     localize();
 
     return {
       activate() {
         state.active = true;
-        if (state.mode === "page") importPage({ translateIfNew: !state.lastPageId });
-        else importSelection().finally(() => scheduleRun(0));
+        if (state.mode === "page") {
+          importPage().finally(() => bridge.readAloudCommand({ action: "state" }).catch(() => {}));
+        }
+        else if (!state.text.phrase) importSelection().finally(() => scheduleRun(0));
       },
       deactivate() {
         state.active = false;
-        stopPageRead();
-        window.speechSynthesis?.cancel();
-        setSpeaking(false);
+        if (state.phraseSpeaking) {
+          bridge.phraseAudioCommand({ action: "stop" }).catch(() => {});
+          setSpeaking(false);
+        }
       },
     };
   },

@@ -67,6 +67,11 @@ export function restorePage(tab) {
   return chrome.runtime.sendMessage({ type: MSG.RESTORE_PAGE, tabId: tab?.id });
 }
 
+export function setPageView(tab, view) {
+  if (!tab?.id || !isReadable(tab.url)) return Promise.resolve({ ok: false, reason: "restricted" });
+  return chrome.runtime.sendMessage({ type: MSG.SET_PAGE_VIEW, tabId: tab.id, view });
+}
+
 export function getPageState(tab) {
   if (!tab?.id || !isReadable(tab.url)) return Promise.resolve({ ok: false, reason: "restricted" });
   return chrome.runtime.sendMessage({ type: MSG.GET_PAGE_STATE, tabId: tab?.id });
@@ -76,6 +81,26 @@ export function watchPageState(cb) {
   const handler = (msg) => {
     if (msg?.type === MSG.PAGE_PROGRESS || msg?.type === MSG.PAGE_STATE || msg?.type === MSG.PAGE_ERROR) cb(msg);
   };
+  chrome.runtime.onMessage.addListener(handler);
+  return () => chrome.runtime.onMessage.removeListener(handler);
+}
+
+export function readAloudCommand(command) {
+  return chrome.runtime.sendMessage({ type: MSG.READ_ALOUD_COMMAND, command });
+}
+
+export function watchReadAloud(cb) {
+  const handler = (msg) => { if (msg?.type === MSG.READ_ALOUD_STATE) cb(msg.state); };
+  chrome.runtime.onMessage.addListener(handler);
+  return () => chrome.runtime.onMessage.removeListener(handler);
+}
+
+export function phraseAudioCommand(command) {
+  return chrome.runtime.sendMessage({ type: MSG.PHRASE_AUDIO_COMMAND, command });
+}
+
+export function watchPhraseAudio(cb) {
+  const handler = (msg) => { if (msg?.type === MSG.PHRASE_AUDIO_STATE) cb(msg.state); };
   chrome.runtime.onMessage.addListener(handler);
   return () => chrome.runtime.onMessage.removeListener(handler);
 }
