@@ -79,6 +79,7 @@
     "[id*='paywall' i],[class*='paywall' i],[id*='signin' i],[class*='signin' i],[id*='login' i],[class*='login' i]," +
     "[class*='sr-only' i],[class*='visually-hidden' i],[class*='screen-reader' i]";
   let pageSegments = new Map();
+  let pageView = "original";
 
   function isVisible(el) {
     return typeof el.checkVisibility === "function"
@@ -277,25 +278,30 @@
         restored++;
       }
     }
+    pageView = "original";
     return restored;
   }
 
-  function setPageTextView(view) {
-    const scrollX = window.scrollX;
-    const scrollY = window.scrollY;
-    let changed = 0;
-    for (const entry of pageSegments.values()) {
-      if (!entry.node?.isConnected) continue;
-      const next = view === "translated" ? entry.translated : entry.original;
-      if (typeof next !== "string" || entry.node.nodeValue === next) continue;
-      entry.node.nodeValue = next;
-      changed++;
-    }
-    // Text length can change layout. Keep the reader at the same viewport position
-    // after the browser has committed this small, in-place batch of text-node changes.
-    requestAnimationFrame(() => window.scrollTo(scrollX, scrollY));
-    const available = [...pageSegments.values()].filter((entry) => typeof entry.translated === "string").length;
-    return { ok: true, changed, available, cached: view === "translated" && available > 0 };
+  function swapPageView(view) {
+    if (view === pageView) return Promise.resolve({ ok: true, cached: pageSegments.size > 0, applied: 0 });
+    if (!pageSegments.size) return Promise.resolve({ ok: true, cached: false, applied: 0 });
+    const x = window.scrollX;
+    const y = window.scrollY;
+    return new Promise((resolve) => requestAnimationFrame(() => {
+      let applied = 0;
+      for (const entry of pageSegments.values()) {
+        if (!entry.node?.isConnected) continue;
+        const next = view === "translated" ? entry.translated : entry.original;
+        if (typeof next !== "string" || entry.node.nodeValue === next) continue;
+        entry.node.nodeValue = next;
+        applied++;
+      }
+      pageView = view;
+      requestAnimationFrame(() => {
+        window.scrollTo(x, y);
+        resolve({ ok: true, cached: view === "translated" && applied > 0, applied });
+      });
+    }));
   }
 
   function collectPageSegments(maxChars = 12000) {
@@ -335,17 +341,14 @@
   }
 
   function applyPageTranslation(translations) {
-    let applied = 0;
     for (const item of translations || []) {
       const entry = pageSegments.get(String(item?.id));
       if (!entry?.node?.isConnected || typeof item?.text !== "string") continue;
       // Do not overwrite a text node changed by the page while Lingua was translating.
       if (entry.node.nodeValue !== entry.original) continue;
-      entry.node.nodeValue = item.text + entry.original.slice(entry.source.length);
-      entry.translated = entry.node.nodeValue;
-      applied++;
+      entry.translated = item.text + entry.original.slice(entry.source.length);
     }
-    return { ok: true, applied, total: pageSegments.size };
+    return swapPageView("translated").then((result) => ({ ...result, total: pageSegments.size }));
   }
 
   chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
@@ -367,13 +370,17 @@
     } else if (msg?.type === MSG.GET_PAGE_SEGMENTS) {
       sendResponse(collectPageSegments(Number(msg.maxChars) || 12000));
     } else if (msg?.type === MSG.APPLY_PAGE_TRANSLATION) {
-      sendResponse(applyPageTranslation(msg.translations));
+      applyPageTranslation(msg.translations).then(sendResponse);
+      return true;
     } else if (msg?.type === MSG.RESTORE_PAGE_TEXT) {
-      sendResponse({ ok: true, restored: restorePageText() });
+      swapPageView("original").then((result) => sendResponse({ ...result, restored: result.applied }));
+      return true;
     } else if (msg?.type === MSG.SET_PAGE_TEXT_VIEW) {
-      sendResponse(setPageTextView(msg.view));
+      swapPageView(msg.view).then(sendResponse);
+      return true;
     } else if (msg?.type === MSG.SHOW_CACHED_PAGE) {
-      sendResponse(setPageTextView("translated"));
+      swapPageView("translated").then(sendResponse);
+      return true;
     }
     // Synchronous responses only, so no `return true`.
   });

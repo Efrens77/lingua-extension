@@ -436,6 +436,7 @@ async function translatePage(tabId, to) {
 }
 
 async function restorePage(tabId) {
+  runs.get(tabId)?.abort();
   const tab = await chrome.tabs.get(tabId);
   const result = await sendToTab(tab, { type: MSG.RESTORE_PAGE_TEXT });
   const previous = await getState(tabId);

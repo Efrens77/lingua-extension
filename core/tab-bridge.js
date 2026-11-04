@@ -71,7 +71,6 @@ export function setPageView(tab, view) {
   if (!tab?.id || !isReadable(tab.url)) return Promise.resolve({ ok: false, reason: "restricted" });
   return chrome.runtime.sendMessage({ type: MSG.SET_PAGE_VIEW, tabId: tab.id, view });
 }
-
 export function showCachedPage(tab, to) {
   if (!tab?.id || !isReadable(tab.url)) return Promise.resolve({ ok: false, cached: false, reason: "restricted" });
   return chrome.runtime.sendMessage({ type: MSG.SHOW_CACHED_PAGE, tabId: tab.id, to });
