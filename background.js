@@ -6,6 +6,7 @@ import { MSG } from "./core/messages.js";
 const PAGE_STATE_KEY = "translate.page-state";
 const runs = new Map(); // tab id -> AbortController
 const pageCache = new Map(); // current worker lifetime: tab + URL + source + target + text
+const pageViewCache = new Map(); // metadata for text mappings retained by the content script
 const BATCH_MAX_CHARS = 400;
 let offscreenReady = null;
 
@@ -413,6 +414,7 @@ async function translatePage(tabId, to) {
     const applied = await sendToTab(tab, { type: MSG.APPLY_PAGE_TRANSLATION, translations });
     if (!applied?.ok) throw new Error("Lingua couldn't update this page");
     const state = { url: tab.url, to, view: "translated", detectedFrom };
+    pageViewCache.set(tabId, state);
     await saveState(tabId, state);
     publish({ type: MSG.PAGE_STATE, tabId, state });
     return { ok: true, state };
@@ -457,6 +459,18 @@ async function setPageView(tabId, view) {
   return { ok: true, state };
 }
 
+async function showCachedPage(tabId, to) {
+  const tab = await chrome.tabs.get(tabId);
+  const result = await sendToTab(tab, { type: MSG.SHOW_CACHED_PAGE });
+  if (!result?.ok || !result.cached) return { ok: false, cached: false, reason: result?.reason || "unavailable" };
+  const prior = pageViewCache.get(tabId) || await getState(tabId);
+  const state = { url: tab.url, to: to || prior?.to, view: "translated", detectedFrom: prior?.detectedFrom };
+  pageViewCache.set(tabId, state);
+  await saveState(tabId, state);
+  publish({ type: MSG.PAGE_STATE, tabId, state });
+  return { ok: true, cached: true, state };
+}
+
 chrome.runtime.onInstalled.addListener(enableSidePanelOnActionClick);
 chrome.runtime.onStartup.addListener(enableSidePanelOnActionClick);
 
@@ -494,6 +508,14 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     });
     return true;
   }
+  if (msg?.type === MSG.SHOW_CACHED_PAGE) {
+    if (!Number.isInteger(msg.tabId)) { sendResponse({ ok: false, cached: false, reason: "restricted" }); return; }
+    showCachedPage(msg.tabId, msg.to).then(sendResponse, (err) => {
+      console.error("[Lingua] cached page view failed:", err);
+      sendResponse({ ok: false, cached: false, error: err.message });
+    });
+    return true;
+  }
   if (msg?.type === MSG.GET_PAGE_STATE) {
     if (!Number.isInteger(msg.tabId)) {
       sendResponse({ ok: false, reason: "restricted" });
@@ -527,6 +549,7 @@ chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
   // A reload or navigation starts a new document. Keep target-language preference
   // in the side panel, but never carry translated-page or narration state over.
   clearState(tabId).catch((err) => console.error("[Lingua] couldn't clear page state on navigation:", err));
+  pageViewCache.delete(tabId);
 });
 
 // Narration is tied to the page the user started it from. Leaving that tab is
@@ -539,6 +562,7 @@ chrome.tabs.onActivated.addListener(({ tabId }) => {
 chrome.tabs.onRemoved.addListener((tabId) => {
   runs.get(tabId)?.abort();
   runs.delete(tabId);
+  pageViewCache.delete(tabId);
   if (narration?.tabId === tabId) stopNarration({ reset: true });
   clearState(tabId).catch(() => {});
 });

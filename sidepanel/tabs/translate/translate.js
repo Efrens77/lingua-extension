@@ -157,7 +157,7 @@ export default {
       controller: null,
       active: false,
       recent: await storage.get(RECENT_KEY, []),
-      pageReading: false, pageAudioBlocking: false, phraseSpeaking: false, readState: null, sliderPhase: "none", sliderPreview: 0, readWasPlaying: false, readCommandToken: 0, invalidReadSessions: new Set(), activeTabId: null, pageViewToken: 0,
+      pageReading: false, pageAudioBlocking: false, phraseSpeaking: false, readState: null, sliderPhase: "none", sliderPreview: 0, readWasPlaying: false, readCommandToken: 0, invalidReadSessions: new Set(), activeTabId: null, pageViewToken: 0, pageSwitching: false, requestedPageView: null,
       progressSessionId: "", progressRevision: -1, progressFloor: 0,
     };
     let runTimer = null;
@@ -196,6 +196,7 @@ export default {
       el.swap.hidden = isPage;
       el.pageViewToggle.hidden = !isPage;
       el.translatedView.disabled = false;
+      el.pageViewToggle.setAttribute("aria-busy", String(state.pageSwitching));
       el.translatedView.setAttribute("aria-pressed", String(state.pageView === "translated"));
       el.originalView.setAttribute("aria-pressed", String(state.pageView === "original"));
     }
@@ -519,12 +520,38 @@ export default {
 
     async function setPageView(view) {
       if (state.mode !== "page") return;
+      if (!state.pageSwitching && view === state.pageView) return;
+      state.requestedPageView = view;
+      if (state.pageSwitching) return;
+      state.pageSwitching = true;
+      renderPageControls();
+      while (state.requestedPageView) {
+        const requested = state.requestedPageView;
+        state.requestedPageView = null;
+        await applyPageView(requested);
+      }
+      state.pageSwitching = false;
+      renderPageControls();
+    }
+
+    async function applyPageView(view) {
       const token = ++state.pageViewToken;
       resetPageRead();
       try {
         const tab = await bridge.getActiveTab();
         if (!isUsablePageTab(tab) || `${tab.id}|${tab.url}` !== state.lastPageId) return;
         state.activeTabId = tab.id;
+        if (view === "translated") {
+          const cached = await bridge.showCachedPage(tab, state.to);
+          if (token !== state.pageViewToken || state.mode !== "page") return;
+          if (cached?.ok && cached.cached) {
+            state.pageState = cached.state;
+            state.pageView = "translated";
+            renderSource();
+            setPageProgress();
+            return;
+          }
+        }
         const res = await bridge.setPageView(tab, view);
         if (token !== state.pageViewToken || state.mode !== "page") return;
         if (!res?.ok) {

@@ -17,6 +17,7 @@
     APPLY_PAGE_TRANSLATION: "lingua/apply-page-translation",
     RESTORE_PAGE_TEXT: "lingua/restore-page-text",
     SET_PAGE_TEXT_VIEW: "lingua/set-page-text-view",
+    SHOW_CACHED_PAGE: "lingua/show-cached-page",
   };
   const MAX_PAGE_CHARS = 60000;
 
@@ -293,7 +294,8 @@
     // Text length can change layout. Keep the reader at the same viewport position
     // after the browser has committed this small, in-place batch of text-node changes.
     requestAnimationFrame(() => window.scrollTo(scrollX, scrollY));
-    return { ok: true, changed, available: [...pageSegments.values()].filter((entry) => typeof entry.translated === "string").length };
+    const available = [...pageSegments.values()].filter((entry) => typeof entry.translated === "string").length;
+    return { ok: true, changed, available, cached: view === "translated" && available > 0 };
   }
 
   function collectPageSegments(maxChars = 12000) {
@@ -370,6 +372,8 @@
       sendResponse({ ok: true, restored: restorePageText() });
     } else if (msg?.type === MSG.SET_PAGE_TEXT_VIEW) {
       sendResponse(setPageTextView(msg.view));
+    } else if (msg?.type === MSG.SHOW_CACHED_PAGE) {
+      sendResponse(setPageTextView("translated"));
     }
     // Synchronous responses only, so no `return true`.
   });

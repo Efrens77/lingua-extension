@@ -5,6 +5,7 @@
 - The standalone Pronounce tab was intentionally removed: pronunciation is more useful in the context of a Define result.
 - Define now has pronunciation playback, preferring matching Wiktionary/Wikimedia recordings and falling back to browser speech synthesis.
 - Translate now has Full Page read-aloud for the visible original or translated main page content.
+- Full Page Original/Translated switching now reuses the page’s cached text mapping, batches view requests, preserves scroll position, and avoids a new translation when the cached mapping is still available.
 - Full Page read-aloud now supports Stop/Resume, Restart, estimated progress and seeking, structured narration pauses, and playback that continues when the side panel closes.
 - Refined Full Page read-aloud with centralized idle, playing, paused, seeking, and finished states; Restart and Original/Translated switching now reset cleanly to the single Read aloud button without restarting speech.
 - The read-aloud controls now keep Stop/Resume and Restart above a stable separate progress slider row. Seeking preserves whether narration was playing or paused, and stale cancelled-speech events no longer reset the controls.

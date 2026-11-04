@@ -9,6 +9,7 @@ export const MSG = {
   APPLY_PAGE_TRANSLATION: "lingua/apply-page-translation",
   RESTORE_PAGE_TEXT: "lingua/restore-page-text",
   SET_PAGE_TEXT_VIEW: "lingua/set-page-text-view",
+  SHOW_CACHED_PAGE: "lingua/show-cached-page",
   TRANSLATE_PAGE: "lingua/translate-page",
   RESTORE_PAGE: "lingua/restore-page",
   SET_PAGE_VIEW: "lingua/set-page-view",
