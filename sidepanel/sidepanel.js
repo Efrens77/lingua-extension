@@ -110,7 +110,8 @@ function renderTabBar() {
     btn.setAttribute("aria-selected", "false");
     btn.textContent = tab.id === "translate"
       ? ctx.i18n.t("translateMode").replace(/ mode$/i, "")
-      : tab.id === "definition" ? ctx.i18n.t("define") : tab.label;
+      : tab.id === "definition" ? ctx.i18n.t("define")
+        : tab.id === "learn" ? ctx.i18n.t("learn") : tab.label;
     if (!tab.enabled) {
       btn.disabled = true;
       btn.title = "Coming soon";

@@ -66,6 +66,9 @@ const TEMPLATE = `
     <div class="actions" data-el="actions" hidden>
       <button type="button" class="icon-btn" data-el="copy" aria-label="Copy translation" title="Copy translation">${ICONS.copy}</button>
       <button type="button" class="icon-btn" data-el="speak" aria-label="Listen to translation" title="Listen to translation">${ICONS.speaker}</button>
+      <button type="button" class="save-translation" data-el="save" hidden>
+        <span data-el="saveIcon" aria-hidden="true"></span><span data-el="saveLabel"></span>
+      </button>
     </div>
   </section>
   <section class="page-read" data-el="pageRead" hidden>
@@ -108,7 +111,7 @@ function optionHtml(list, withAuto, i18n) {
 
 export default {
   async mount(root, ctx) {
-    const { bridge, storage, translator, i18n } = ctx;
+    const { bridge, storage, translator, i18n, learn } = ctx;
     loadStylesheet();
     root.innerHTML = TEMPLATE;
 
@@ -131,6 +134,7 @@ export default {
       el.clear.setAttribute("aria-label", t("clear")); el.clear.title = t("clear");
       el.copy.setAttribute("aria-label", t("copy")); el.copy.title = t("copy");
       el.speak.setAttribute("aria-label", t("listen")); el.speak.title = t("listen");
+      renderSaveControl();
       renderReadAloud();
       root.querySelector(".section-label").textContent = t("recent");
       el.hint.textContent = hintFor(state.mode);
@@ -149,9 +153,10 @@ export default {
       pageState: null,
       pageView: "original",
       pageMeta: null,
-      detected: null,
+      detected: saved.mode === "phrase" ? String(savedPhrase.detected || "") : null,
       result: saved.mode === "phrase" ? String(savedPhrase.result || "") : "",
       lastKey: saved.mode === "phrase" ? String(savedPhrase.lastKey || "") : "",
+      resultProvider: saved.mode === "phrase" ? String(savedPhrase.resultProvider || "") : "",
       lastPageId: "",
       runId: 0,
       controller: null,
@@ -159,6 +164,7 @@ export default {
       recent: await storage.get(RECENT_KEY, []),
       pageReading: false, pageAudioBlocking: false, phraseSpeaking: false, readState: null, sliderPhase: "none", sliderPreview: 0, readWasPlaying: false, readCommandToken: 0, invalidReadSessions: new Set(), activeTabId: null, pageViewToken: 0, pageSwitching: false, requestedPageView: null,
       progressSessionId: "", progressRevision: -1, progressFloor: 0,
+      save: { identity: "", recordId: "", status: "hidden", lookupToken: 0, mutationToken: 0 },
     };
     let runTimer = null;
     let recentTimer = null;
@@ -170,6 +176,8 @@ export default {
       const next = {
         text: state.text.phrase, result: state.mode === "phrase" ? state.result : savedPhrase.result || "",
         lastKey: state.mode === "phrase" ? state.lastKey : savedPhrase.lastKey || "",
+        detected: state.mode === "phrase" ? state.detected || "" : savedPhrase.detected || "",
+        resultProvider: state.mode === "phrase" ? state.resultProvider || "" : savedPhrase.resultProvider || "",
       };
       Object.assign(savedPhrase, next);
       return storage.set(PHRASE_SESSION_KEY, next);
@@ -227,8 +235,94 @@ export default {
       renderPageControls();
     }
 
+    function phraseKey() {
+      return ["phrase", state.from, state.to, state.text.phrase.trim()].join("\u0001");
+    }
+
+    function currentTranslationSnapshot() {
+      const sourceLanguageCode = state.from === AUTO_CODE ? state.detected : state.from;
+      if (state.mode !== "phrase" || !state.text.phrase.trim() || !state.result.trim()
+        || !sourceLanguageCode || sourceLanguageCode === AUTO_CODE || !state.to
+        || state.lastKey !== phraseKey()) return null;
+      return {
+        sourceText: state.text.phrase,
+        targetText: state.result,
+        sourceLanguage: {
+          code: sourceLanguageCode,
+          name: i18n.languageName(sourceLanguageCode, nameOf(sourceLanguageCode)),
+        },
+        targetLanguage: {
+          code: state.to,
+          name: i18n.languageName(state.to, nameOf(state.to)),
+        },
+        translationMetadata: state.resultProvider ? { provider: state.resultProvider } : null,
+      };
+    }
+
+    function invalidateSaveState() {
+      state.save.lookupToken++;
+      state.save.mutationToken++;
+      state.save.identity = "";
+      state.save.recordId = "";
+      state.save.status = "hidden";
+    }
+
+    function renderSaveControl() {
+      const snapshot = currentTranslationSnapshot();
+      if (!snapshot) {
+        el.save.hidden = true;
+        return;
+      }
+      const identity = learn.translationIdentity(snapshot);
+      const status = state.save.identity === identity ? state.save.status : "checking";
+      if (status === "unavailable") {
+        el.save.hidden = true;
+        return;
+      }
+      const saved = status === "saved" || status === "unsaving";
+      const pending = ["checking", "saving", "unsaving"].includes(status);
+      el.save.hidden = false;
+      el.save.disabled = pending;
+      el.saveIcon.innerHTML = saved ? ICONS.flagFilled : ICONS.flag;
+      el.saveLabel.textContent = saved ? t("unsave") : t("save");
+      el.save.setAttribute("aria-label", saved ? t("unsave") : t("save"));
+      el.save.title = saved ? t("unsave") : t("save");
+      el.save.setAttribute("aria-busy", String(pending));
+    }
+
+    async function refreshSaveState() {
+      const snapshot = currentTranslationSnapshot();
+      if (!snapshot) {
+        invalidateSaveState();
+        renderSaveControl();
+        return;
+      }
+      const identity = learn.translationIdentity(snapshot);
+      if (state.save.identity === identity && state.save.status !== "hidden") {
+        renderSaveControl();
+        return;
+      }
+      const lookupToken = ++state.save.lookupToken;
+      state.save.identity = identity;
+      state.save.recordId = "";
+      state.save.status = "checking";
+      renderSaveControl();
+      try {
+        const record = await learn.findSavedTranslation(identity);
+        if (lookupToken !== state.save.lookupToken || state.save.identity !== identity) return;
+        state.save.recordId = record?.id || "";
+        state.save.status = record ? "saved" : "unsaved";
+      } catch {
+        if (lookupToken !== state.save.lookupToken || state.save.identity !== identity) return;
+        state.save.status = "unavailable";
+        el.status.textContent = t("saveUnavailable");
+      }
+      renderSaveControl();
+    }
+
     // kind: empty | loading | done | error | notice
     function setResult(kind, message = "") {
+      if (kind !== "done") invalidateSaveState();
       if (state.mode === "page") {
         el.resultCard.hidden = true;
         return;
@@ -254,6 +348,8 @@ export default {
         el.status.append(span, retry);
       }
       el.actions.hidden = !(state.mode === "phrase" && kind === "done" && state.result);
+      renderSaveControl();
+      if (kind === "done") refreshSaveState();
     }
 
     function setPageProgress(percent = null, message = "") {
@@ -440,6 +536,7 @@ export default {
         cancelRun();
         state.result = "";
         state.lastKey = "";
+        state.resultProvider = "";
         state.detected = null;
         renderSource();
         setResult("empty");
@@ -476,6 +573,7 @@ export default {
         state.result = res.text;
         state.lastKey = key;
         state.detected = state.from === AUTO_CODE ? res.detectedFrom : null;
+        state.resultProvider = res.provider || "";
         persistPhrase();
         renderSource();
         setResult("done");
@@ -484,6 +582,7 @@ export default {
         if (err?.name === "AbortError" || id !== state.runId) return;
         state.result = "";
         state.lastKey = "";
+        state.resultProvider = "";
         const offline = navigator.onLine === false;
         console.error("[Lingua] phrase translation failed:", err);
         setResult("error", offline ? "You're offline." : t("unavailable"));
@@ -628,8 +727,11 @@ export default {
       state.text.phrase = text.slice(0, LIMITS.phrase);
       state.result = "";
       state.lastKey = "";
+      state.resultProvider = "";
       persistPhrase();
+      invalidateSaveState();
       renderSource();
+      renderSaveControl();
       scheduleRun(0);
     }
 
@@ -648,7 +750,8 @@ export default {
       el.hint.textContent = hintFor(mode);
       state.result = mode === "phrase" ? String(savedPhrase.result || "") : "";
       state.lastKey = mode === "phrase" ? String(savedPhrase.lastKey || "") : "";
-      state.detected = null;
+      state.detected = mode === "phrase" ? String(savedPhrase.detected || "") : null;
+      state.resultProvider = mode === "phrase" ? String(savedPhrase.resultProvider || "") : "";
       persist();
       renderSource();
       // The Phrase speaker remains in this mounted view when users switch
@@ -671,6 +774,8 @@ export default {
     el.from.addEventListener("change", () => {
       state.from = el.from.value;
       persist();
+      invalidateSaveState();
+      renderSaveControl();
       scheduleRun(0);
     });
     el.to.addEventListener("change", () => {
@@ -680,6 +785,8 @@ export default {
         if (state.pageView === "translated") runPageTranslation();
         return;
       }
+      invalidateSaveState();
+      renderSaveControl();
       scheduleRun(0);
     });
     el.translatedView.addEventListener("click", () => setPageView("translated"));
@@ -730,6 +837,8 @@ export default {
       state.to = newTo;
       syncSelects();
       persist();
+      invalidateSaveState();
+      renderSaveControl();
       scheduleRun(0);
     });
 
@@ -738,7 +847,10 @@ export default {
       state.text.phrase = el.source.value;
       state.result = "";
       state.lastKey = "";
+      state.resultProvider = "";
       persistPhrase();
+      invalidateSaveState();
+      renderSaveControl();
       el.clear.hidden = !el.source.value;
       el.count.textContent = `${el.source.value.length.toLocaleString()} / ${limit().toLocaleString()}`;
       scheduleRun(TYPING_DELAY_MS);
@@ -747,12 +859,39 @@ export default {
       state.text.phrase = "";
       state.result = "";
       state.lastKey = "";
+      state.resultProvider = "";
       persistPhrase();
+      invalidateSaveState();
       renderSource();
+      renderSaveControl();
       scheduleRun(0);
       el.source.focus();
     });
     el.refresh.addEventListener("click", () => importPage());
+
+    el.save.addEventListener("click", async () => {
+      const snapshot = currentTranslationSnapshot();
+      if (!snapshot) return;
+      const identity = learn.translationIdentity(snapshot);
+      if (state.save.identity !== identity || !["saved", "unsaved"].includes(state.save.status)) return;
+      const wasSaved = state.save.status === "saved";
+      const mutationToken = ++state.save.mutationToken;
+      state.save.status = wasSaved ? "unsaving" : "saving";
+      renderSaveControl();
+      try {
+        const record = wasSaved
+          ? await learn.removeSavedTranslation(state.save.recordId || identity)
+          : await learn.addSavedTranslation(snapshot);
+        if (mutationToken !== state.save.mutationToken || state.save.identity !== identity) return;
+        state.save.recordId = wasSaved ? "" : record.id;
+        state.save.status = wasSaved ? "unsaved" : "saved";
+      } catch {
+        if (mutationToken !== state.save.mutationToken || state.save.identity !== identity) return;
+        state.save.status = wasSaved ? "saved" : "unsaved";
+        el.status.textContent = t("saveUnavailable");
+      }
+      renderSaveControl();
+    });
 
     el.copy.addEventListener("click", async () => {
       await navigator.clipboard.writeText(state.result);
@@ -788,6 +927,17 @@ export default {
     bridge.watchPhraseAudio((phraseState) => {
       if (phraseState?.status !== "playing") setSpeaking(false);
     });
+    // Learn-side removals share the same persistent envelope. Re-check the
+    // currently displayed Phrase result so its Save/Unsave control cannot stay
+    // stale after a folder or entry is removed elsewhere in Lingua.
+    if (globalThis.chrome?.storage?.onChanged) {
+      chrome.storage.onChanged.addListener((changes, areaName) => {
+        if (areaName !== "local" || !changes["learn.state"] || state.mode !== "phrase") return;
+        invalidateSaveState();
+        renderSaveControl();
+        refreshSaveState();
+      });
+    }
 
     // Highlighted text on the page (Phrase mode only).
     bridge.watchSelection((text) => {

@@ -10,6 +10,7 @@ import { lookupDefinition, lookupTypedDefinition } from "./definition/index.js";
 import { lookupPronunciation } from "./pronunciation/index.js";
 import { bestVoice, speakText, speakChunks, stopSpeech } from "./pronunciation/speech.js";
 import { createI18n } from "./i18n.js";
+import * as learn from "./learn-storage.js";
 
 export async function createContext() {
   const sidepanelSelection = {
@@ -19,7 +20,7 @@ export async function createContext() {
     take() { const text = this.text; this.text = ""; return text; },
   };
   return {
-    bridge, storage, languages, config,
+    bridge, storage, languages, config, learn,
     translator: { translate, detectLanguageDetails },
     dictionary: { lookupDefinition, lookupTypedDefinition },
     pronunciation: { lookupPronunciation, bestVoice, speakText, speakChunks, stopSpeech },
