@@ -29,10 +29,16 @@ const TEMPLATE = `
           <p class="definition-gloss" data-el="gloss" hidden></p>
           <p class="definition-field" data-el="phonetic" hidden></p>
         </div>
-        <button type="button" class="definition-pronounce" data-el="pronounce" aria-pressed="false">
-          ${ICONS.microphone}
-        </button>
+        <div class="definition-result-actions">
+          <button type="button" class="definition-save" data-el="save" hidden>
+            <span data-el="saveIcon" aria-hidden="true"></span><span data-el="saveLabel"></span>
+          </button>
+          <button type="button" class="definition-pronounce" data-el="pronounce" aria-pressed="false">
+            ${ICONS.microphone}
+          </button>
+        </div>
       </section>
+      <p class="definition-save-status" data-el="saveStatus" role="status" aria-live="polite"></p>
       <div data-el="entries"></div>
       <section class="definition-synonym-section" data-el="synonymSection" hidden>
         <h3 data-el="synonymsTitle"></h3>
@@ -51,7 +57,7 @@ function reliablePageLanguage(value) {
 
 export default {
   async mount(root, ctx) {
-    const { bridge, dictionary, pronunciation, i18n, translator, sidepanelSelection, storage } = ctx;
+    const { bridge, dictionary, pronunciation, i18n, translator, sidepanelSelection, storage, learn } = ctx;
     const href = new URL("./definition.css", import.meta.url).href;
     if (!document.querySelector(`link[href="${href}"]`)) {
       const link = document.createElement("link");
@@ -63,7 +69,8 @@ export default {
     const state = {
       active: false, word: saved.word || "", pageLang: saved.pageLang || "", sourceLanguage: saved.sourceLanguage || "",
       result: saved.result || null, request: 0, manual: Boolean(saved.manual), audio: null, pageAudioActive: false, pageAudioStatus: "idle", pageAudioTabId: null,
-      message: saved.message || "",
+      message: saved.message || "", definitionReady: Boolean(saved.result),
+      save: { identity: "", recordId: "", status: "hidden", lookupToken: 0, mutationToken: 0 },
     };
 
     const t = (key) => i18n.t(key);
@@ -71,6 +78,94 @@ export default {
       word: state.word, pageLang: state.pageLang, sourceLanguage: state.sourceLanguage,
       result: state.result, manual: state.manual, message: state.message,
     }).catch((error) => console.error("[Lingua] couldn't save Define state:", error));
+
+    function hasVocabularyCandidate(result = state.result) {
+      return Boolean(result && String(result.word || "").trim() && String(result.sourceLanguage || "").trim()
+        && Array.isArray(result.entries)
+        && result.entries.some((entry) => Array.isArray(entry?.senses)
+          && entry.senses.some((sense) => String(sense?.definition || "").trim())));
+    }
+
+    function currentVocabularySnapshot() {
+      const result = state.result;
+      if (!state.definitionReady || !hasVocabularyCandidate(result)) return null;
+      return {
+        word: result.word,
+        language: {
+          code: result.sourceLanguage,
+          name: i18n.languageName(result.sourceLanguage, result.sourceLanguage),
+        },
+        definition: result,
+        summaryLanguage: i18n.resolvedLocale,
+        pronunciation: result.pronunciation || null,
+      };
+    }
+
+    function invalidateSaveState() {
+      state.save.lookupToken++;
+      state.save.mutationToken++;
+      state.save.identity = "";
+      state.save.recordId = "";
+      state.save.status = "hidden";
+      el.saveStatus.textContent = "";
+      el.saveStatus.dataset.kind = "";
+    }
+
+    function renderSaveControl() {
+      const snapshot = currentVocabularySnapshot();
+      if (!snapshot) {
+        if (!hasVocabularyCandidate()) { el.save.hidden = true; return; }
+        el.save.hidden = false;
+        el.save.disabled = true;
+        el.saveIcon.innerHTML = ICONS.flag;
+        el.saveLabel.textContent = t("save");
+        el.save.setAttribute("aria-label", t("save"));
+        el.save.title = t("save");
+        el.save.setAttribute("aria-busy", "true");
+        return;
+      }
+      const identity = learn.vocabularyIdentity(snapshot);
+      const status = state.save.identity === identity ? state.save.status : "checking";
+      if (status === "unavailable") { el.save.hidden = true; return; }
+      const saved = status === "saved" || status === "unsaving";
+      const pending = ["checking", "saving", "unsaving"].includes(status);
+      el.save.hidden = false;
+      el.save.disabled = pending;
+      el.saveIcon.innerHTML = saved ? ICONS.flagFilled : ICONS.flag;
+      el.saveLabel.textContent = saved ? t("unsave") : t("save");
+      el.save.setAttribute("aria-label", saved ? t("unsave") : t("save"));
+      el.save.title = saved ? t("unsave") : t("save");
+      el.save.setAttribute("aria-busy", String(pending));
+    }
+
+    async function refreshSaveState() {
+      const snapshot = currentVocabularySnapshot();
+      if (!snapshot) { invalidateSaveState(); renderSaveControl(); return; }
+      const identity = learn.vocabularyIdentity(snapshot);
+      if (state.save.identity === identity && state.save.status !== "hidden") { renderSaveControl(); return; }
+      const lookupToken = ++state.save.lookupToken;
+      state.save.identity = identity;
+      state.save.recordId = "";
+      state.save.status = "checking";
+      renderSaveControl();
+      try {
+        const record = await learn.findSavedVocabulary(identity);
+        if (lookupToken !== state.save.lookupToken || state.save.identity !== identity) return;
+        state.save.recordId = record?.id || "";
+        state.save.status = record ? "saved" : "unsaved";
+      } catch {
+        if (lookupToken !== state.save.lookupToken || state.save.identity !== identity) return;
+        state.save.status = "unavailable";
+        el.saveStatus.textContent = t("vocabularySaveUnavailable");
+        el.saveStatus.dataset.kind = "error";
+      }
+      renderSaveControl();
+    }
+
+    function showSaveStatus(message, kind = "") {
+      el.saveStatus.textContent = message;
+      el.saveStatus.dataset.kind = kind;
+    }
     function localizeStatic() {
       el.wordLabel.textContent = t("definitionWord");
       el.word.placeholder = t("definitionWordPlaceholder");
@@ -85,6 +180,8 @@ export default {
 
     function hideResult() {
       stopPronunciation();
+      state.definitionReady = false;
+      invalidateSaveState();
       el.result.hidden = true;
       el.content.hidden = true;
       el.message.textContent = "";
@@ -94,6 +191,8 @@ export default {
 
     function showMessage(message) {
       stopPronunciation();
+      state.definitionReady = false;
+      invalidateSaveState();
       el.result.hidden = false;
       el.content.hidden = true;
       el.message.hidden = false;
@@ -135,6 +234,7 @@ export default {
       el.phonetic.textContent = result.phonetic ? t("definitionPhonetic") + ": /" + result.phonetic + "/" : "";
       el.pronounce.setAttribute("aria-label", t("pronouncePlay") + ": " + result.word);
       updatePronunciationAvailability();
+      renderSaveControl();
       el.entries.replaceChildren();
       for (const entry of result.entries) {
         const section = document.createElement("section");
@@ -212,6 +312,7 @@ export default {
       }
       state.message = "";
       persist();
+      if (currentVocabularySnapshot()) refreshSaveState();
     }
 
     function stopPronunciation() {
@@ -338,6 +439,8 @@ export default {
         if (request !== state.request) return;
         state.sourceLanguage = sourceLanguage;
         state.result = result;
+        state.definitionReady = false;
+        invalidateSaveState();
         state.message = "";
         renderResult(result);
         pronunciation.lookupPronunciation({ word: valid, sourceLanguage }).then((pronunciationResult) => {
@@ -345,12 +448,65 @@ export default {
           result.pronunciation = pronunciationResult;
           if (!result.phonetic && pronunciationResult.phonetic) result.phonetic = pronunciationResult.phonetic;
           renderResult(result);
-        }).catch((error) => console.error("[Lingua] pronunciation lookup failed:", error));
+        }).catch((error) => console.error("[Lingua] pronunciation lookup failed:", error)).finally(() => {
+          if (request !== state.request || state.result !== result) return;
+          state.definitionReady = true;
+          renderResult(result);
+        });
       } catch (error) {
         if (request !== state.request) return;
         console.error("[Lingua] definition lookup failed:", error);
         showMessage(error?.rateLimited ? t("definitionRateLimit") : t("definitionUnavailable"));
       }
+    }
+
+    async function localizeRestoredDefinition(result, sourceLanguage, savedLanguage, request) {
+      const targetLanguage = i18n.resolvedLocale;
+      const definitionLanguage = savedLanguage || "auto";
+      if (sourceLanguage === targetLanguage) result.gloss = "";
+      else result.gloss = await translateText(result.word, sourceLanguage, targetLanguage);
+      for (const entry of result.entries || []) {
+        for (const sense of entry.senses || []) {
+          if (request !== state.request || state.result !== result) return;
+          sense.definition = await translateText(sense.definition, definitionLanguage, targetLanguage);
+          if (sense.example) sense.exampleTranslation = sourceLanguage === targetLanguage
+            ? ""
+            : await translateText(sense.example, sourceLanguage, targetLanguage);
+        }
+      }
+    }
+
+    function restoreSavedDefinition(payload) {
+      const word = normalizeWord(payload?.word || "");
+      const sourceLanguage = String(payload?.language?.code || payload?.definition?.sourceLanguage || "").trim();
+      const savedResult = payload?.definition;
+      if (!word || !sourceLanguage || !hasVocabularyCandidate(savedResult)) {
+        if (word) lookup(word, "", { manual: true, sourceLanguage });
+        else showMessage(t("definitionUnavailable"));
+        return;
+      }
+      const request = ++state.request;
+      stopPronunciation();
+      hideLanguageChoice();
+      state.word = word;
+      state.pageLang = "";
+      state.sourceLanguage = sourceLanguage;
+      state.manual = true;
+      state.message = "";
+      state.result = JSON.parse(JSON.stringify(savedResult));
+      state.result.word = word;
+      state.result.sourceLanguage = sourceLanguage;
+      if (!state.result.pronunciation && payload.pronunciation) state.result.pronunciation = JSON.parse(JSON.stringify(payload.pronunciation));
+      state.definitionReady = true;
+      el.word.value = word;
+      renderResult(state.result);
+      localizeRestoredDefinition(state.result, sourceLanguage, String(payload.summaryLanguage || "").trim(), request)
+        .then(() => {
+          if (request !== state.request || !state.result) return;
+          renderResult(state.result);
+        })
+        .catch((error) => console.error("[Lingua] couldn't localize saved definition:", error));
+      requestAnimationFrame(() => { el.heading.tabIndex = -1; el.heading.focus(); });
     }
 
     function useSelection(text, details = {}) {
@@ -387,6 +543,30 @@ export default {
       if (event.key === "Enter") lookup(el.word.value, "", { manual: true });
     });
     el.pronounce.addEventListener("click", playPronunciation);
+    el.save.addEventListener("click", async () => {
+      const snapshot = currentVocabularySnapshot();
+      if (!snapshot) return;
+      const identity = learn.vocabularyIdentity(snapshot);
+      if (state.save.identity !== identity || !["saved", "unsaved"].includes(state.save.status)) return;
+      const wasSaved = state.save.status === "saved";
+      const mutationToken = ++state.save.mutationToken;
+      state.save.status = wasSaved ? "unsaving" : "saving";
+      renderSaveControl();
+      try {
+        const record = wasSaved
+          ? await learn.removeSavedVocabulary(state.save.recordId || identity)
+          : await learn.addSavedVocabulary(snapshot);
+        if (mutationToken !== state.save.mutationToken || state.save.identity !== identity) return;
+        state.save.recordId = wasSaved ? "" : record.id;
+        state.save.status = wasSaved ? "unsaved" : "saved";
+        showSaveStatus(t(wasSaved ? "vocabularyUnsaved" : "vocabularySaved"));
+      } catch {
+        if (mutationToken !== state.save.mutationToken || state.save.identity !== identity) return;
+        state.save.status = wasSaved ? "saved" : "unsaved";
+        showSaveStatus(t("vocabularySaveUnavailable"), "error");
+      }
+      renderSaveControl();
+    });
     window.addEventListener("lingua-page-audio-start", stopPronunciation);
     window.addEventListener("lingua-side-audio-start", (event) => {
       if (event.detail?.owner !== "definition") stopPronunciation();
@@ -401,6 +581,14 @@ export default {
       updatePronunciationAvailability();
     });
     bridge.watchSelection((text, _tab, details) => useSelection(text, details));
+    if (globalThis.chrome?.storage?.onChanged) {
+      chrome.storage.onChanged.addListener((changes, areaName) => {
+        if (areaName !== "local" || !changes["learn.state"]) return;
+        invalidateSaveState();
+        renderSaveControl();
+        refreshSaveState();
+      });
+    }
     document.addEventListener("selectionchange", () => {
       if (!state.active) return;
       const selection = document.getSelection();
@@ -420,6 +608,8 @@ export default {
     return {
       async activate() {
         state.active = true;
+        const restored = sidepanelSelection.takeDefinitionRestore();
+        if (restored) { restoreSavedDefinition(restored); return; }
         const panelSelection = sidepanelSelection.take();
         if (normalizeWord(panelSelection)) {
           lookup(panelSelection, "", { manual: true });

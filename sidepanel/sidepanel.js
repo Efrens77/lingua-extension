@@ -18,6 +18,7 @@ const mounted = new Map(); // id -> { panel, controller }
 let activeId = null;
 const THEME_KEY = "app.theme";
 const SIZE_KEY = "app.text-scale";
+const ACTIVE_TAB_KEY = "app.active-tab";
 
 document.getElementById("feedback-link").href = FEEDBACK_URL;
 document.addEventListener("selectionchange", () => {
@@ -133,6 +134,9 @@ async function activate(id) {
   }
   activeId = id;
   for (const btn of tabBar.children) btn.setAttribute("aria-selected", String(btn.id === `tab-${id}`));
+  // Remember only the top-level section. Individual tabs keep their own
+  // session details (such as Learn's selected mode) under their own keys.
+  ctx.storage.set(ACTIVE_TAB_KEY, id).catch(() => {});
 
   if (!mounted.has(id)) {
     const panel = document.createElement("section");
@@ -149,5 +153,12 @@ async function activate(id) {
   entry.controller.activate?.();
 }
 
+// Learn can request a deliberate transition to Define with a saved result.
+// Keep the shell as the only owner of top-level tab activation.
+ctx.openTab = activate;
+
 applyShellStrings();
-activate(TABS.find((t) => t.enabled).id);
+const savedActiveTab = await ctx.storage.get(ACTIVE_TAB_KEY, "");
+const initialTab = TABS.find((tab) => tab.id === savedActiveTab && tab.enabled)?.id
+  || TABS.find((tab) => tab.enabled).id;
+activate(initialTab);

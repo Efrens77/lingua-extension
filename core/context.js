@@ -15,9 +15,12 @@ import * as learn from "./learn-storage.js";
 export async function createContext() {
   const sidepanelSelection = {
     text: "",
+    definitionRestore: null,
     set(text) { this.text = String(text || "").trim(); },
     get() { return this.text; },
     take() { const text = this.text; this.text = ""; return text; },
+    setDefinitionRestore(value) { this.definitionRestore = value || null; },
+    takeDefinitionRestore() { const value = this.definitionRestore; this.definitionRestore = null; return value; },
   };
   return {
     bridge, storage, languages, config, learn,

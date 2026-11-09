@@ -1,5 +1,5 @@
 // Central place for values you'll want to change without hunting through code.
-export const VERSION_LABEL = "Alpha v0.1";
+export const VERSION_LABEL = "Alpha v0.4";
 
 export const FEEDBACK_URL = "https://forms.cloud.microsoft/r/Dr2LLE4znf";
 

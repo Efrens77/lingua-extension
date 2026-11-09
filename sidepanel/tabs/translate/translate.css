@@ -84,6 +84,13 @@
 }
 .actions { display: flex; gap: 2px; margin-top: 8px; }
 .actions .icon-btn { color: var(--teal); }
+/* Keep the Full Page Read Aloud explanation available on the disabled Phrase
+   audio button, just as it is on Learn flashcards. */
+.actions [data-el="speak"]:disabled {
+  cursor: not-allowed;
+  opacity: .6;
+  pointer-events: auto;
+}
 .save-translation {
   display: inline-flex; align-items: center; gap: 5px; min-height: 32px; padding: 0 8px;
   border: 1px solid var(--teal-line); border-radius: 9px; background: var(--surface);

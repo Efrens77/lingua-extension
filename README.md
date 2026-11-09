@@ -2,7 +2,7 @@
 
 Translate the page you're reading, translate a highlighted phrase, or look up one selected word in a side panel that stays open while you browse.
 
-Status: **Alpha v0.2**. Translate and Definition tabs are available. See [RELEASE_NOTES.md](RELEASE_NOTES.md) for install and usage instructions.
+Status: **Alpha v0.4**. Translate, Define, and Learn are available. See [RELEASE_NOTES.md](RELEASE_NOTES.md) for install and usage instructions.
 
 ## Run it locally
 
@@ -24,6 +24,7 @@ core/                    Shared code. No UI, usable by every tab
   tab-bridge.js          All chrome.tabs / messaging logic lives here
   languages.js           Language list
   storage.js             chrome.storage wrapper
+  learn-storage.js       Versioned saved translations and vocabulary records
   translation/           Translation engine
     index.js             translate(): chunking, concurrency, provider fallback
     text-splitter.js
@@ -33,6 +34,7 @@ sidepanel/
   tabs/registry.js       The list of tabs
   tabs/translate/        The Translate tab (UI + state)
   tabs/definition/       The Definition tab (UI + state)
+  tabs/learn/            The Learn tab (folders and flashcard practice)
 ```
 
 ## Adding a tab

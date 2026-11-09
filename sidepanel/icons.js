@@ -13,5 +13,7 @@ export const ICONS = {
   flag: svg('<path d="M6 21V4"/><path d="M6 5c4-3 8 3 12 0v10c-4 3-8-3-12 0"/>'),
   flagFilled: svg('<path fill="currentColor" stroke="currentColor" d="M6 4v17"/><path fill="currentColor" d="M6 5c4-3 8 3 12 0v10c-4 3-8-3-12 0Z"/>'),
   trash: svg('<path d="M4 7h16"/><path d="M10 11v6M14 11v6"/><path d="M6 7l1 14h10l1-14M9 7V4h6v3"/>'),
+  arrowLeft: svg('<path d="M19 12H5"/><path d="m12 19-7-7 7-7"/>'),
+  arrowRight: svg('<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>'),
   microphone: svg('<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M8 21h8"/>'),
 };

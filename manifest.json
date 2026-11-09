@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Lingua",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Translate pages and phrases, define or pronounce a selected word, in a side panel that stays open while you browse.",
   "permissions": ["sidePanel", "storage", "scripting", "offscreen", "tts"],
   "host_permissions": ["<all_urls>"],

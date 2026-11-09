@@ -1,3 +1,19 @@
+# Lingua v0.4 (Alpha)
+
+## New in 0.4
+
+- Added **Learn**, a local study area for translations and vocabulary that you choose to save from Phrase and Define.
+- Saved Phrase translations are organized into source-to-target language folders, with individual and folder-level removal controls.
+- Saved Define results are organized by word language and preserve the complete original dictionary result separately from any flashcard edit.
+- Practice saved translations and vocabulary as randomized, non-repeating flashcard sessions. You can start from a folder or choose a specific item to study first.
+- Flashcards support accessible flipping, keyboard navigation, progress, completion/restart controls, and pronunciation of translation sides or saved vocabulary words.
+- Vocabulary card summaries show the first available definition for each part of speech. You can edit a card summary, restore its original summary, or open the complete saved result in Define without requiring a new lookup when the saved payload is valid.
+- Learn pronunciation controls coordinate with Full Page Read Aloud: they stay disabled while narration is active and never interrupt it.
+
+## Privacy and data
+
+Learn records are stored locally in the extension's Chrome storage. Saved vocabulary retains the complete definition payload needed to restore it in Define. When a saved definition is displayed in a different interface language, Lingua uses the same existing translation-provider strategy used for displayed definition content.
+
 # Lingua v0.3 (Alpha)
 
 ## New in 0.3
