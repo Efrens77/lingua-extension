@@ -17,7 +17,16 @@
 
   <section class="settings-sheet" id="settings-sheet" role="dialog" aria-modal="false" aria-labelledby="settings-title" hidden>
     <div class="settings-head"><h2 id="settings-title">Settings</h2><button type="button" class="icon-btn" id="settings-close" aria-label="Close settings">×</button></div>
-    <label class="settings-field"><span id="interface-language-label">Interface language</span><select id="interface-language"></select></label>
+    <div class="settings-field settings-language-field">
+      <div class="settings-field-head">
+        <span id="interface-language-label">Interface language</span>
+        <span class="settings-download" id="definition-download" hidden>
+          <button type="button" id="definition-download-button">Download</button>
+          <span id="definition-download-status" role="status" aria-live="polite"></span>
+        </span>
+      </div>
+      <select id="interface-language" aria-labelledby="interface-language-label"></select>
+    </div>
     <label class="settings-field"><span id="text-size-label">Text size</span><input id="text-size" type="range" min="0.8" max="1.4" step="0.01" value="1" /><span class="size-labels"><span id="smaller-label">Smaller</span><span id="larger-label">Larger</span></span></label>
     <div class="settings-actions"><button type="button" class="theme-toggle" id="theme-toggle" aria-pressed="false">Dark mode</button></div>
     <a id="feedback-link" href="#" target="_blank" rel="noopener">Send feedback</a>

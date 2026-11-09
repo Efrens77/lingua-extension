@@ -64,6 +64,23 @@ function meaningful(text) {
   return /[\p{L}\p{N}]/u.test(text);
 }
 
+function comparable(text) {
+  return String(text || "").normalize("NFKD").replace(/\p{M}/gu, "")
+    .replace(/[^\p{L}\p{N}]+/gu, "").toLocaleLowerCase();
+}
+
+function weakEntries(entries, selectedWord) {
+  const headword = comparable(selectedWord);
+  const senses = entries.flatMap((entry) => entry.senses || []);
+  if (!senses.length) return true;
+  return !senses.some((sense) => {
+    const definition = String(sense.definition || "").trim();
+    const compact = comparable(definition);
+    const words = definition.match(/[\p{L}\p{N}]+/gu) || [];
+    return Boolean(compact && compact !== headword && (words.length >= 3 || definition.length >= 28));
+  });
+}
+
 function findPhonetic(section, sourceLanguage) {
   const code = escapeRegExp(sourceLanguage);
   const ipa = new RegExp("\\{\\{IPA\\|" + code + "\\|([^|}]+)", "i").exec(section)
@@ -174,6 +191,17 @@ function htmlEntries(renderedHtml, sourceLanguage, selectedWord) {
     if (senses.length) out.push({ partOfSpeech, senses, synonyms: uniqueSynonyms(synonyms, selectedWord) });
   }
   return out;
+}
+
+function entriesForLanguage(source, sourceLanguage, selectedWord) {
+  const section = languageSection(source.wikitext, sourceLanguage);
+  const extracted = extractWikitextEntries(section, selectedWord);
+  // Keep language discovery and lookup consistent. Some language sections
+  // express their sense entirely through templates, which only the rendered
+  // HTML expands into readable definition text.
+  const rendered = weakEntries(extracted, selectedWord)
+    ? htmlEntries(source.html, sourceLanguage, selectedWord) : [];
+  return rendered.length ? rendered : extracted;
 }
 
 export function extractWikitextEntries(section, selectedWord = "") {
@@ -304,9 +332,7 @@ export const wiktionary = {
     if (cache.has(key)) return cache.get(key);
     const source = await request(word);
     const section = languageSection(source.wikitext, sourceLanguage);
-    const extracted = extractWikitextEntries(section, word);
-    const htmlFallback = extracted.length ? [] : htmlEntries(source.html, sourceLanguage, word);
-    const entriesWithSynonyms = extracted.length ? extracted : htmlFallback;
+    const entriesWithSynonyms = entriesForLanguage(source, sourceLanguage, word);
     const result = {
       word,
       sourceLanguage,
@@ -337,7 +363,7 @@ export const wiktionary = {
       for (const heading of headings) {
         const code = codeForHeading(heading);
         if (!code || languages.includes(code)) continue;
-        if (extractWikitextEntries(languageSection(source.wikitext, code)).length) languages.push(code);
+        if (entriesForLanguage(source, code, candidate).length) languages.push(code);
       }
       if (languages.length) return languages;
     }

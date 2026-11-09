@@ -10,5 +10,10 @@ export const ICONS = {
   stop: svg('<rect x="6" y="6" width="12" height="12" rx="2"/>'),
   clear: svg('<circle cx="12" cy="12" r="9"/><path d="M9 9l6 6M15 9l-6 6"/>'),
   refresh: svg('<path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/>'),
+  flag: svg('<path d="M6 21V4"/><path d="M6 5c4-3 8 3 12 0v10c-4 3-8-3-12 0"/>'),
+  flagFilled: svg('<path fill="currentColor" stroke="currentColor" d="M6 4v17"/><path fill="currentColor" d="M6 5c4-3 8 3 12 0v10c-4 3-8-3-12 0Z"/>'),
+  trash: svg('<path d="M4 7h16"/><path d="M10 11v6M14 11v6"/><path d="M6 7l1 14h10l1-14M9 7V4h6v3"/>'),
+  arrowLeft: svg('<path d="M19 12H5"/><path d="m12 19-7-7 7-7"/>'),
+  arrowRight: svg('<path d="M5 12h14"/><path d="m12 5 7 7-7 7"/>'),
   microphone: svg('<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3M8 21h8"/>'),
 };

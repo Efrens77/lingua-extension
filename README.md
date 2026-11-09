@@ -2,7 +2,7 @@
 
 Translate the page you're reading, translate a highlighted phrase, or look up one selected word in a side panel that stays open while you browse.
 
-Status: **Alpha v0.2**. Translate and Definition tabs are available. See [RELEASE_NOTES.md](RELEASE_NOTES.md) for install and usage instructions.
+Status: **Alpha v0.4**. Translate, Define, and Learn are available. See [RELEASE_NOTES.md](RELEASE_NOTES.md) for install and usage instructions.
 
 ## Run it locally
 
@@ -11,6 +11,10 @@ Status: **Alpha v0.2**. Translate and Definition tabs are available. See [RELEAS
 3. After editing code, click the reload icon on the Lingua card. Close and reopen the side panel to see UI changes.
 
 No build step, no dependencies. Plain JavaScript (ES modules), HTML, and CSS.
+
+## Definition coverage
+
+English definitions generally have the strongest coverage because Lingua can use a structured English dictionary source. Definitions for non-English words depend on the available source-language dictionary content and translation support, so they may be shorter, less detailed, or less precise. Always verify important meanings with a trusted dictionary for the relevant language.
 
 ## How it's organized
 
@@ -24,6 +28,7 @@ core/                    Shared code. No UI, usable by every tab
   tab-bridge.js          All chrome.tabs / messaging logic lives here
   languages.js           Language list
   storage.js             chrome.storage wrapper
+  learn-storage.js       Versioned saved translations and vocabulary records
   translation/           Translation engine
     index.js             translate(): chunking, concurrency, provider fallback
     text-splitter.js
@@ -33,6 +38,7 @@ sidepanel/
   tabs/registry.js       The list of tabs
   tabs/translate/        The Translate tab (UI + state)
   tabs/definition/       The Definition tab (UI + state)
+  tabs/learn/            The Learn tab (folders and flashcard practice)
 ```
 
 ## Adding a tab

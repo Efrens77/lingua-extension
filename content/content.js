@@ -57,7 +57,11 @@
   document.addEventListener("keyup", reportSelection);
 
   // ---------- Page text ----------
-  const ARTICLE_BLOCKS = "h1,h2,h3,h4,h5,h6,p,li,blockquote,time,[rel='author'],[itemprop='author'],[itemprop='datePublished'],[class*='byline' i],[class*='dateline' i],[class*='subtitle' i],[class*='subhead' i],[class*='deck' i],[class*='dek' i]";
+  const ARTICLE_BLOCKS = "h1,h2,h3,h4,h5,h6,p,li,blockquote,[class*='subtitle' i],[class*='subhead' i],[class*='deck' i],[class*='dek' i]";
+  // Read Aloud focuses on editorial prose. Byline and publication metadata is
+  // useful visually but interrupts narration, so exclude it independently of
+  // the broader Full Page Translation collector.
+  const NARRATION_METADATA = "time,[rel='author'],[itemprop='author'],[itemprop='datePublished'],[itemprop='dateModified'],[class*='byline' i],[class*='dateline' i],[class*='author' i],[class*='publish-date' i],[class*='publication-date' i],[data-testid*='author' i],[data-testid*='date' i]";
   // Translation intentionally has a very small exclusion list. It collects
   // visible text throughout the page, including navigation, sidebars, footer
   // copy, and visible sponsored/ad cards.
@@ -109,11 +113,15 @@
     return normalizedText(element.innerText).length;
   }
 
+  function isNarrationMetadata(element) {
+    return element.matches?.(NARRATION_METADATA) || Boolean(element.querySelector?.(NARRATION_METADATA));
+  }
+
   function articleMetrics(element) {
     let bodyChars = 0;
     let paragraphs = 0;
     for (const paragraph of element.querySelectorAll("p,blockquote")) {
-      if (paragraph.closest(ARTICLE_SKIP) || !isVisible(paragraph)) continue;
+      if (paragraph.closest(ARTICLE_SKIP) || isNarrationMetadata(paragraph) || !isVisible(paragraph)) continue;
       const text = cleanNarrationText(paragraph.innerText);
       if (text.length >= 40) { bodyChars += text.length; paragraphs++; }
     }
@@ -160,13 +168,11 @@
       // A header inside a selected article commonly owns the headline and
       // byline; only reject headers when the body fallback is being used.
       if (element.closest(ARTICLE_SKIP) || belongsToNestedArticle(element, root, roots)
-        || (root === document.body && element.closest("header")) || !isVisible(element)) continue;
+        || isNarrationMetadata(element) || (root === document.body && element.closest("header")) || !isVisible(element)) continue;
       // Only list containers are skipped for nested textual children. The old
       // generic nested-selector check could discard valid paragraphs/decks
       // wrapped with metadata or other inline article markup.
       if (element.tagName === "LI" && element.querySelector("p,blockquote,li")) continue;
-      if (element.matches("[class*='byline' i],[class*='dateline' i]")
-        && element.querySelector("time,[rel='author'],[itemprop='author'],[itemprop='datePublished']")) continue;
       const text = cleanNarrationText(element.innerText);
       const key = text.toLocaleLowerCase();
       if (text.length < 2 || seen.has(key)) continue;
@@ -175,8 +181,7 @@
         : element.matches("[class*='subtitle' i],[class*='subhead' i],[class*='deck' i],[class*='dek' i]") ? "deck"
           : /^H[2-6]$/.test(element.tagName) ? "heading"
         : element.tagName === "LI" ? "item"
-          : element.matches("time,[rel='author'],[itemprop='author'],[itemprop='datePublished'],[class*='byline' i],[class*='dateline' i]") ? "meta"
-            : "paragraph";
+        : "paragraph";
       blocks.push({
         type,
         text,
@@ -195,9 +200,10 @@
     let node;
     while ((node = walker.nextNode())) {
       const parent = node.parentElement;
-      if (!parent || parent.closest(ARTICLE_SKIP) || belongsToNestedArticle(parent, root, roots) || !isVisible(parent)) continue;
+      if (!parent || parent.closest(ARTICLE_SKIP) || isNarrationMetadata(parent)
+        || belongsToNestedArticle(parent, root, roots) || !isVisible(parent)) continue;
       const holder = parent.closest("p,blockquote,div,section") || parent;
-      if (!root.contains(holder) || holder.closest(ARTICLE_SKIP) || seen.has(holder)) continue;
+      if (!root.contains(holder) || holder.closest(ARTICLE_SKIP) || isNarrationMetadata(holder) || seen.has(holder)) continue;
       // Never use a layout wrapper as a fallback block: it would repeat every
       // descendant paragraph as one giant, disconnected snippet.
       if (holder.matches("div,section") && holder.querySelector("div,section")) continue;
@@ -340,13 +346,23 @@
     };
   }
 
+  function preserveSegmentWhitespace(translated, source) {
+    // Translation providers commonly trim each request. Because inline links
+    // split a sentence into separate text nodes, preserve the source node's
+    // boundary whitespace so adjacent translated nodes do not run together.
+    const leading = source.match(/^\s+/u)?.[0] || "";
+    const trailing = source.match(/\s+$/u)?.[0] || "";
+    const text = String(translated || "").trim();
+    return text ? leading + text + trailing : String(translated || "");
+  }
+
   function applyPageTranslation(translations) {
     for (const item of translations || []) {
       const entry = pageSegments.get(String(item?.id));
       if (!entry?.node?.isConnected || typeof item?.text !== "string") continue;
       // Do not overwrite a text node changed by the page while Lingua was translating.
       if (entry.node.nodeValue !== entry.original) continue;
-      entry.translated = item.text + entry.original.slice(entry.source.length);
+      entry.translated = preserveSegmentWhitespace(item.text, entry.source) + entry.original.slice(entry.source.length);
     }
     return swapPageView("translated").then((result) => ({ ...result, total: pageSegments.size }));
   }

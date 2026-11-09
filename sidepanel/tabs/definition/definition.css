@@ -2,7 +2,6 @@
 .definition-label { display: block; margin: 12px 0 6px; font-size: 0.8125rem; font-weight: 600; color: var(--text-2); }
 .definition-input-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
 .definition-language-choice { margin-top: 12px; }
-.definition-language-choice label { display: block; margin-bottom: 6px; font-size: 0.8125rem; font-weight: 600; color: var(--text-2); }
 .definition-language-choice select {
   min-width: 0; border: 1px solid var(--border); border-radius: 10px; padding: 9px 10px; background: var(--bg);
 }
@@ -14,11 +13,22 @@
 .definition-word { margin: 0; font-size: 1.5rem; line-height: 1.2; overflow-wrap: anywhere; }
 .definition-pronunciation { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .definition-pronunciation > div { min-width: 0; }
+.definition-result-actions { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+.definition-save { display: inline-flex; align-items: center; gap: 5px; min-height: 32px; padding: 0 8px; border: 1px solid var(--teal-line); border-radius: 9px; background: var(--surface); color: var(--teal-strong); font-size: .78125rem; font-weight: 700; }
+.definition-save:hover:not(:disabled) { background: var(--teal-tint); }
+.definition-save:disabled { cursor: progress; opacity: .65; }
+.definition-save svg { width: 16px; height: 16px; }
 .definition-pronounce { flex: 0 0 auto; width: 42px; height: 42px; border: 1px solid var(--teal-line); border-radius: 50%; background: var(--teal-tint); color: var(--teal-strong); font-size: 1.2rem; }
 .definition-pronounce[aria-pressed="true"] { background: var(--teal); color: #fff; }
+/* Disabled Full Page Read Aloud controls retain their native title tooltip. */
+.definition-pronounce:disabled { cursor: not-allowed; opacity: .6; pointer-events: auto; }
 .definition-meta { margin: 5px 0 0; font-size: 0.8125rem; color: var(--muted); }
+.definition-save-status { min-height: 0; margin: 8px 0 0; color: var(--text-2); font-size: .78125rem; }
+.definition-save-status:empty { display: none; }
+.definition-save-status[data-kind="error"] { color: var(--danger); }
 .definition-gloss, .definition-field { margin: 12px 0 0; color: var(--text-2); }
 .definition-gloss { font-weight: 600; }
+.definition-equivalent { margin: 8px 0 0; color: var(--text-2); font-size: .8125rem; }
 .definition-entry { margin-top: 16px; }
 .definition-entry h3 { margin: 0 0 6px; color: var(--teal-strong); font-size: 1rem; }
 .definition-entry ol { margin: 0; padding-left: 1.4rem; }

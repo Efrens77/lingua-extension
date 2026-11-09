@@ -19,4 +19,10 @@ export const TABS = [
     enabled: true,
     load: () => import("./definition/definition.js"),
   },
+  {
+    id: "learn",
+    label: "Learn",
+    enabled: true,
+    load: () => import("./learn/learn.js"),
+  },
 ];

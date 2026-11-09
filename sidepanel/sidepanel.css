@@ -78,8 +78,14 @@ button { cursor: pointer; }
 .settings-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .settings-head h2 { margin: 0; font-size: 1rem; }
 .settings-field { display: block; margin-top: 14px; font-weight: 600; color: var(--text-2); }
+.settings-field-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .settings-field select, .settings-field input { width: 100%; margin-top: 6px; }
 .settings-field select { padding: 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); }
+.settings-download { display: inline-flex; align-items: center; gap: 6px; min-width: 0; font-size: .75rem; }
+.settings-download button { padding: 0; border: 0; background: none; color: var(--teal-strong); font: inherit; font-size: inherit; font-weight: 700; text-decoration: underline; }
+.settings-download button:hover:not(:disabled) { color: var(--teal); }
+.settings-download button:disabled { cursor: default; color: var(--muted); text-decoration: none; }
+.settings-download span { color: var(--muted); font-size: .75rem; }
 .size-labels { display: flex; justify-content: space-between; font-size: 0.6875rem; font-weight: 500; color: var(--muted); }
 .settings-actions { display: flex; justify-content: flex-start; margin-top: 14px; }
 .settings-sheet > a { display: inline-block; margin-top: 8px; color: var(--teal-strong); font-weight: 700; }

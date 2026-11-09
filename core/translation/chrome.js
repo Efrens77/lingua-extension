@@ -29,6 +29,53 @@ function monitor(onProgress) {
   } : {};
 }
 
+function translatorOptions(from, to) {
+  const sourceLanguage = normalizeLanguage(from);
+  const targetLanguage = normalizeLanguage(to);
+  return sourceLanguage && targetLanguage && sourceLanguage !== targetLanguage
+    ? { sourceLanguage, targetLanguage } : null;
+}
+
+// The Settings download action prepares one deliberate language pair. It is
+// separate from normal translation so ordinary lookups never begin a model
+// download without an explicit user gesture.
+export async function prepareChromeTranslator({ from, to, onProgress } = {}) {
+  if (!apiAvailable("Translator")) return { ok: false, reason: "unavailable" };
+  const options = translatorOptions(from, to);
+  if (!options) return { ok: false, reason: "unsupported" };
+  try {
+    const availability = await globalThis.Translator.availability(options);
+    if (!["available", "downloadable", "downloading"].includes(availability)) {
+      return { ok: false, reason: availability || "unavailable" };
+    }
+    const key = `${options.sourceLanguage}\u0001${options.targetLanguage}`;
+    if (!translators.has(key)) {
+      translators.set(key, globalThis.Translator.create({ ...options, ...monitor(onProgress) }));
+    }
+    try {
+      await translators.get(key);
+    } catch (error) {
+      translators.delete(key);
+      throw error;
+    }
+    return { ok: true, status: availability };
+  } catch (error) {
+    console.warn("[Lingua] Chrome Translator download failed:", error);
+    return { ok: false, reason: "unavailable" };
+  }
+}
+
+export async function chromeTranslatorAvailability({ from, to } = {}) {
+  if (!apiAvailable("Translator")) return "unavailable";
+  const options = translatorOptions(from, to);
+  if (!options) return "unavailable";
+  try {
+    return await globalThis.Translator.availability(options);
+  } catch {
+    return "unavailable";
+  }
+}
+
 export async function detectLanguage(text, { allowDownload = false, onDownloadProgress } = {}) {
   const result = await detectLanguageDetails(text, { allowDownload, onDownloadProgress });
   return result?.code || null;
@@ -61,6 +108,18 @@ export async function translateWithChrome({ text, from, to, allowDownload = fals
       : { ok: false, reason: "unsupported" };
   }
   const options = { sourceLanguage: detectedFrom, targetLanguage };
+  const key = `${detectedFrom}\u0001${targetLanguage}`;
+  // A translator explicitly prepared from Settings may still report
+  // "downloadable" from availability() for privacy reasons. Reuse the
+  // prepared instance before asking Chrome for availability again.
+  if (translators.has(key)) {
+    try {
+      const translator = await translators.get(key);
+      return { ok: true, text: await translator.translate(text), detectedFrom, provider: "chrome" };
+    } catch {
+      translators.delete(key);
+    }
+  }
   try {
     const availability = await globalThis.Translator.availability(options);
     if (availability !== "available" && !canDownload(availability, allowDownload)) {
@@ -74,7 +133,6 @@ export async function translateWithChrome({ text, from, to, allowDownload = fals
       }
       return { ok: false, reason: availability || "unavailable" };
     }
-    const key = `${detectedFrom}\u0001${targetLanguage}`;
     if (!translators.has(key)) {
       translators.set(key, globalThis.Translator.create({ ...options, ...monitor(onDownloadProgress) }));
     }
