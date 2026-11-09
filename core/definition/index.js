@@ -25,6 +25,31 @@ function usable(result) {
   return Boolean(result?.entries?.some((entry) => entry.senses?.length));
 }
 
+function comparable(value) {
+  return String(value || "").normalize("NFKD").replace(/\p{M}/gu, "")
+    .replace(/[^\p{L}\p{N}]+/gu, "").toLocaleLowerCase();
+}
+
+// Some multilingual Wiktionary entries are only a self-reference or a
+// one-word translation gloss (for example, "oso → bear"). Keep usable()
+// permissive for provider selection, but let the UI request a stronger
+// fallback when no sense explains the word in useful detail.
+export function hasWeakDefinitions(result, word = result?.word) {
+  const headword = comparable(word);
+  const senses = (result?.entries || []).flatMap((entry) => entry.senses || []);
+  if (!senses.length) return true;
+  return !senses.some((sense) => {
+    const definition = String(sense?.definition || "").trim();
+    const compact = comparable(definition);
+    const words = definition.match(/[\p{L}\p{N}]+/gu) || [];
+    if (!compact || compact === headword) return false;
+    // A concise native gloss is useful, but it does not provide the fuller
+    // dictionary explanation expected in Define. Let the English fallback
+    // improve one- and two-word glosses while retaining richer native senses.
+    return words.length >= 3 || definition.length >= 28;
+  });
+}
+
 function complete(result) {
   return usable(result) && Boolean(result.phonetic)
     && result.entries.some((entry) => entry.senses?.some((sense) => sense.example));

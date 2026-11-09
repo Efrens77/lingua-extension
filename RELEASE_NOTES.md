@@ -14,6 +14,10 @@
 
 Learn records are stored locally in the extension's Chrome storage. Saved vocabulary retains the complete definition payload needed to restore it in Define. When a saved definition is displayed in a different interface language, Lingua uses the same existing translation-provider strategy used for displayed definition content.
 
+## Definition coverage
+
+English definitions generally have the strongest coverage because Lingua can use a structured English dictionary source. Definitions for non-English words depend on available source-language dictionary content and translation support, and may be shorter, less detailed, or less precise. Verify important meanings with a trusted dictionary for the relevant language.
+
 # Lingua v0.3 (Alpha)
 
 ## New in 0.3

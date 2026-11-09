@@ -40,6 +40,17 @@ const DEFINITION_REFINEMENT_STRINGS = {
   ko: { define: "뜻 찾기", definitionWordPlaceholder: "단어를 선택하거나 입력", definitionChooseLanguage: "이 단어는 어느 언어인가요?", definitionSynonyms: "유의어", definitionSynonymLookup: "유의어 찾기" },
 };
 
+const DEFINITION_FALLBACK_STRINGS = {
+  en: { definitionEnglishEquivalent:"English equivalent" },
+  es: { definitionEnglishEquivalent:"Equivalente en inglés" },
+  fr: { definitionEnglishEquivalent:"Équivalent anglais" },
+  de: { definitionEnglishEquivalent:"Englisches Äquivalent" },
+  pt: { definitionEnglishEquivalent:"Equivalente em inglês" },
+  zh: { definitionEnglishEquivalent:"英语对应词" },
+  ja: { definitionEnglishEquivalent:"英語の対応語" },
+  ko: { definitionEnglishEquivalent:"영어 대응어" },
+};
+
 const PRONUNCIATION_STRINGS = {
   en: { pronounce:"Pronounce", pronounceLoading:"Looking up pronunciation…", pronounceLanguageUnknown:"Lingua could not identify this word’s language. Try a word from a page with a declared language.", pronounceUnavailable:"Pronunciation is temporarily unavailable. Please try again shortly.", pronounceRateLimit:"Pronunciation service limit reached. Please wait a moment and try again.", pronouncePlay:"Play pronunciation", pronounceStop:"Stop pronunciation", pronounceNoAudio:"No compatible pronunciation audio is available for this word.", pronounceSyllables:"Syllables", pronounceStress:"Primary stress", pronounceTip:"Pronunciation tip", pronounceSource:"Audio source", pronounceSyllablePlay:"Play syllable" },
   es: { pronounce:"Pronunciar", pronounceLoading:"Buscando pronunciación…", pronounceLanguageUnknown:"Lingua no pudo identificar el idioma de esta palabra. Prueba una palabra de una página con idioma declarado.", pronounceUnavailable:"La pronunciación no está disponible temporalmente. Inténtalo de nuevo pronto.", pronounceRateLimit:"Se alcanzó el límite del servicio de pronunciación. Espera un momento e inténtalo de nuevo.", pronouncePlay:"Reproducir pronunciación", pronounceStop:"Detener pronunciación", pronounceNoAudio:"No hay audio de pronunciación compatible para esta palabra.", pronounceSyllables:"Sílabas", pronounceStress:"Acento principal", pronounceTip:"Consejo de pronunciación", pronounceSource:"Fuente de audio", pronounceSyllablePlay:"Reproducir sílaba" },
@@ -60,6 +71,17 @@ const READ_ALOUD_STRINGS = {
   zh: { readAloud:"朗读", stopReading:"停止", resumeReading:"继续", restartReading:"重新开始", readAloudUnavailable:"Lingua 目前无法朗读此页面。", otherAudioBlocked:"请先停止整页朗读，再播放其他音频。" },
   ja: { readAloud:"読み上げる", stopReading:"停止", resumeReading:"再開", restartReading:"最初から", readAloudUnavailable:"Lingua は現在このページを読み上げられません。", otherAudioBlocked:"ほかの音声を再生するには、ページ全体の読み上げを停止してください。" },
   ko: { readAloud:"소리 내어 읽기", stopReading:"중지", resumeReading:"계속", restartReading:"다시 시작", readAloudUnavailable:"Lingua가 지금 이 페이지를 소리 내어 읽을 수 없습니다.", otherAudioBlocked:"다른 오디오를 재생하려면 전체 페이지 읽기를 중지하세요." },
+};
+
+const DOWNLOAD_STRINGS = {
+  en: { download:"Download", downloadTooltip:"Download this Chrome language pack to make future definitions faster on this device.", downloading:"Downloading…", downloaded:"Downloaded", downloadUnavailable:"Download unavailable" },
+  es: { download:"Descargar", downloadTooltip:"Descarga este paquete de idioma de Chrome para que las futuras definiciones sean más rápidas en este dispositivo.", downloading:"Descargando…", downloaded:"Descargado", downloadUnavailable:"Descarga no disponible" },
+  fr: { download:"Télécharger", downloadTooltip:"Téléchargez ce pack linguistique Chrome pour accélérer les futures définitions sur cet appareil.", downloading:"Téléchargement…", downloaded:"Téléchargé", downloadUnavailable:"Téléchargement indisponible" },
+  de: { download:"Herunterladen", downloadTooltip:"Laden Sie dieses Chrome-Sprachpaket herunter, um zukünftige Definitionen auf diesem Gerät zu beschleunigen.", downloading:"Wird heruntergeladen…", downloaded:"Heruntergeladen", downloadUnavailable:"Download nicht verfügbar" },
+  pt: { download:"Baixar", downloadTooltip:"Baixe este pacote de idioma do Chrome para tornar futuras definições mais rápidas neste dispositivo.", downloading:"Baixando…", downloaded:"Baixado", downloadUnavailable:"Download indisponível" },
+  zh: { download:"下载", downloadTooltip:"下载此 Chrome 语言包，以便在此设备上更快地显示未来的释义。", downloading:"正在下载…", downloaded:"已下载", downloadUnavailable:"无法下载" },
+  ja: { download:"ダウンロード", downloadTooltip:"この Chrome 言語パックをダウンロードすると、このデバイスで今後の定義をより速く表示できます。", downloading:"ダウンロード中…", downloaded:"ダウンロード済み", downloadUnavailable:"ダウンロードできません" },
+  ko: { download:"다운로드", downloadTooltip:"이 Chrome 언어 팩을 다운로드하면 이 기기에서 이후 정의를 더 빠르게 표시할 수 있습니다.", downloading:"다운로드 중…", downloaded:"다운로드됨", downloadUnavailable:"다운로드할 수 없음" },
 };
 
 // Learn is intentionally kept in its own table while the feature is built in
@@ -134,8 +156,10 @@ export async function createI18n() {
     get resolvedLocale() { return resolved(); },
     t(key) {
       return DEFINITION_REFINEMENT_STRINGS[resolved()]?.[key]
+        ?? DEFINITION_FALLBACK_STRINGS[resolved()]?.[key]
         ?? PRONUNCIATION_STRINGS[resolved()]?.[key]
         ?? READ_ALOUD_STRINGS[resolved()]?.[key]
+        ?? DOWNLOAD_STRINGS[resolved()]?.[key]
         ?? LEARN_EDIT_STATUS_STRINGS[resolved()]?.[key]
         ?? LEARN_EDIT_STRINGS[resolved()]?.[key]
         ?? LEARN_VOCABULARY_STRINGS[resolved()]?.[key]
@@ -144,8 +168,10 @@ export async function createI18n() {
         ?? DEFINITION_STRINGS[resolved()]?.[key]
         ?? STRINGS[resolved()]?.[key]
         ?? DEFINITION_REFINEMENT_STRINGS.en[key]
+        ?? DEFINITION_FALLBACK_STRINGS.en[key]
         ?? PRONUNCIATION_STRINGS.en[key]
         ?? READ_ALOUD_STRINGS.en[key]
+        ?? DOWNLOAD_STRINGS.en[key]
         ?? LEARN_EDIT_STATUS_STRINGS.en[key]
         ?? LEARN_EDIT_STRINGS.en[key]
         ?? LEARN_VOCABULARY_STRINGS.en[key]

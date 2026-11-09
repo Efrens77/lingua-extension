@@ -1,4 +1,5 @@
 import { normalizeLanguage } from "../../../core/translation/chrome.js";
+import { hasWeakDefinitions } from "../../../core/definition/index.js";
 import { normalizeWord } from "../../../core/word.js";
 import { ICONS } from "../../icons.js";
 
@@ -12,7 +13,6 @@ const TEMPLATE = `
       <button type="button" data-el="lookup">Look up</button>
     </div>
     <div class="definition-language-choice" data-el="languageChoice" hidden>
-      <label for="definition-language" data-el="languagePrompt">Which language is this word?</label>
       <div class="definition-input-row">
         <select id="definition-language" data-el="language"></select>
         <button type="button" data-el="languageLookup">Look up</button>
@@ -27,6 +27,7 @@ const TEMPLATE = `
           <h1 class="definition-word" data-el="heading"></h1>
           <p class="definition-meta" data-el="meta"></p>
           <p class="definition-gloss" data-el="gloss" hidden></p>
+          <p class="definition-equivalent" data-el="equivalent" hidden></p>
           <p class="definition-field" data-el="phonetic" hidden></p>
         </div>
         <div class="definition-result-actions">
@@ -170,7 +171,7 @@ export default {
       el.wordLabel.textContent = t("definitionWord");
       el.word.placeholder = t("definitionWordPlaceholder");
       el.lookup.textContent = t("definitionLookup");
-      el.languagePrompt.textContent = t("definitionChooseLanguage");
+      el.language.setAttribute("aria-label", t("definitionChooseLanguage"));
       el.languageLookup.textContent = t("definitionLookup");
       el.word.value = state.word;
       if (state.result) renderResult(state.result);
@@ -219,7 +220,6 @@ export default {
         el.language.append(option);
       }
       el.languageChoice.hidden = false;
-      showMessage(t("definitionChooseLanguage"));
     }
 
     function renderResult(result) {
@@ -230,6 +230,9 @@ export default {
       el.meta.textContent = t("detected") + " " + i18n.languageName(result.sourceLanguage, result.sourceLanguage);
       el.gloss.hidden = !result.gloss;
       el.gloss.textContent = result.gloss ? t("definitionTranslation") + ": " + result.gloss : "";
+      el.equivalent.hidden = !result.englishEquivalent;
+      el.equivalent.textContent = result.englishEquivalent
+        ? t("definitionEnglishEquivalent") + ": " + result.englishEquivalent : "";
       el.phonetic.hidden = !result.phonetic;
       el.phonetic.textContent = result.phonetic ? t("definitionPhonetic") + ": /" + result.phonetic + "/" : "";
       el.pronounce.setAttribute("aria-label", t("pronouncePlay") + ": " + result.word);
@@ -273,7 +276,7 @@ export default {
           chip.textContent = synonym;
           chip.setAttribute("aria-label", t("definitionSynonymLookup") + ": " + synonym);
           chip.addEventListener("click", () => lookup(synonym, "", {
-            manual: true, sourceLanguage: result.sourceLanguage,
+            manual: true, sourceLanguage: result.definitionLookupLanguage || result.sourceLanguage,
           }));
           el.synonyms.append(chip);
         }
@@ -370,6 +373,7 @@ export default {
 
     async function prepareResult(raw, sourceLanguage) {
       const interfaceLanguage = i18n.resolvedLocale;
+      const definitionLanguage = raw.definitionLanguage || "en";
       const gloss = sourceLanguage === interfaceLanguage
         ? ""
         : await translateText(raw.word, sourceLanguage, interfaceLanguage);
@@ -378,14 +382,65 @@ export default {
         const senses = [];
         for (const sense of entry.senses) {
           const definition = await translateText(sense.definition, "en", interfaceLanguage);
-          const exampleTranslation = sense.example && sourceLanguage !== interfaceLanguage
-            ? await translateText(sense.example, sourceLanguage, interfaceLanguage)
+          const exampleTranslation = sense.example && definitionLanguage !== interfaceLanguage
+            ? await translateText(sense.example, definitionLanguage, interfaceLanguage)
             : "";
           senses.push({ ...sense, definition, exampleTranslation });
         }
         entries.push({ ...entry, senses });
       }
       return { ...raw, sourceLanguage, gloss, entries };
+    }
+
+    function englishGlossCandidate(primary) {
+      // English Wiktionary's language sections define foreign headwords in
+      // English. A one-word gloss such as "oso → bear" is too thin to show as
+      // a definition, but is an excellent key for the stronger English
+      // dictionary provider.
+      if (primary?.provider !== "wiktionary") return "";
+      for (const entry of primary.entries || []) {
+        for (const sense of entry.senses || []) {
+          const candidate = normalizeWord(sense.definition);
+          if (candidate) return candidate;
+        }
+      }
+      return "";
+    }
+
+    async function strongEnglishDefinition(candidate) {
+      if (!candidate) return null;
+      const english = await dictionary.lookupDefinition({ word: candidate, sourceLanguage: "en" });
+      return english.notFound || hasWeakDefinitions(english, candidate) ? null : english;
+    }
+
+    async function englishDictionaryFallback(word, sourceLanguage, primary) {
+      if (sourceLanguage === "en" || (!primary?.notFound && !hasWeakDefinitions(primary, word))) return primary;
+      try {
+        // Prefer the native lookup's English gloss. Machine translation of an
+        // isolated low-resource word can return the source word unchanged.
+        let equivalent = englishGlossCandidate(primary);
+        let english = await strongEnglishDefinition(equivalent);
+        if (!english) {
+          equivalent = normalizeWord(await translateText(word, sourceLanguage, "en"));
+          english = await strongEnglishDefinition(equivalent);
+        }
+        if (!english) return primary;
+        // Preserve the word the user selected and its source language. Only
+        // the dictionary content comes from the stronger English provider.
+        return {
+          ...english,
+          word,
+          sourceLanguage,
+          definitionLanguage: "en",
+          definitionLookupLanguage: "en",
+          englishEquivalent: equivalent,
+          usedEnglishFallback: true,
+        };
+      } catch {
+        // A fallback must never turn an otherwise displayable native result
+        // into an error state.
+        return primary;
+      }
     }
 
     async function detectSource(word, pageLang) {
@@ -412,8 +467,11 @@ export default {
       hideLanguageChoice();
       showMessage(t("definitionLoading"));
       try {
-        let sourceLanguage = forcedLanguage || await detectSource(valid, pageLang);
+        let sourceLanguage = forcedLanguage;
         let raw = null;
+        if (!sourceLanguage) {
+          sourceLanguage = await detectSource(valid, pageLang);
+        }
         if (!sourceLanguage) {
           if (!manual) {
             if (request === state.request) showMessage(t("definitionLanguageUnknown"));
@@ -431,6 +489,7 @@ export default {
           sourceLanguage = raw.sourceLanguage;
         }
         raw ??= await dictionary.lookupDefinition({ word: valid, sourceLanguage });
+        raw = await englishDictionaryFallback(valid, sourceLanguage, raw);
         if (raw.notFound) {
           if (request === state.request) showMessage(t("definitionNotFound"));
           return;

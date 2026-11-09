@@ -12,6 +12,10 @@ Status: **Alpha v0.4**. Translate, Define, and Learn are available. See [RELEASE
 
 No build step, no dependencies. Plain JavaScript (ES modules), HTML, and CSS.
 
+## Definition coverage
+
+English definitions generally have the strongest coverage because Lingua can use a structured English dictionary source. Definitions for non-English words depend on the available source-language dictionary content and translation support, so they may be shorter, less detailed, or less precise. Always verify important meanings with a trusted dictionary for the relevant language.
+
 ## How it's organized
 
 ```

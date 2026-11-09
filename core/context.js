@@ -5,7 +5,7 @@ import * as storage from "./storage.js";
 import * as languages from "./languages.js";
 import * as config from "./config.js";
 import { translate } from "./translation/index.js";
-import { detectLanguageDetails } from "./translation/chrome.js";
+import { detectLanguageDetails, prepareChromeTranslator, chromeTranslatorAvailability } from "./translation/chrome.js";
 import { lookupDefinition, lookupTypedDefinition } from "./definition/index.js";
 import { lookupPronunciation } from "./pronunciation/index.js";
 import { bestVoice, speakText, speakChunks, stopSpeech } from "./pronunciation/speech.js";
@@ -24,7 +24,7 @@ export async function createContext() {
   };
   return {
     bridge, storage, languages, config, learn,
-    translator: { translate, detectLanguageDetails },
+    translator: { translate, detectLanguageDetails, prepareChromeTranslator, chromeTranslatorAvailability },
     dictionary: { lookupDefinition, lookupTypedDefinition },
     pronunciation: { lookupPronunciation, bestVoice, speakText, speakChunks, stopSpeech },
     sidepanelSelection,

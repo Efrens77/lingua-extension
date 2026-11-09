@@ -14,8 +14,12 @@ const settingsSheet = document.getElementById("settings-sheet");
 const settingsClose = document.getElementById("settings-close");
 const languageSelect = document.getElementById("interface-language");
 const textSize = document.getElementById("text-size");
+const definitionDownload = document.getElementById("definition-download");
+const definitionDownloadButton = document.getElementById("definition-download-button");
+const definitionDownloadStatus = document.getElementById("definition-download-status");
 const mounted = new Map(); // id -> { panel, controller }
 let activeId = null;
+let downloadToken = 0;
 const THEME_KEY = "app.theme";
 const SIZE_KEY = "app.text-scale";
 const ACTIVE_TAB_KEY = "app.active-tab";
@@ -51,6 +55,50 @@ function applyTextSize(value) {
   textSize.value = String(scale);
 }
 
+function setDefinitionDownloadState({ hidden = false, disabled = false, label = "", status = "", downloaded = false } = {}) {
+  definitionDownload.hidden = hidden;
+  definitionDownloadButton.disabled = disabled;
+  definitionDownloadButton.textContent = label || ctx.i18n.t("download");
+  definitionDownloadButton.title = downloaded ? "" : ctx.i18n.t("downloadTooltip");
+  definitionDownloadButton.setAttribute("aria-label", downloaded ? ctx.i18n.t("downloaded") : ctx.i18n.t("downloadTooltip"));
+  definitionDownloadStatus.textContent = status;
+}
+
+async function refreshDefinitionDownload() {
+  const token = ++downloadToken;
+  const target = ctx.i18n.resolvedLocale;
+  // English definitions are already supplied in English, so downloading an
+  // English target pack offers no meaningful speed benefit for this setting.
+  if (target === "en") { setDefinitionDownloadState({ hidden: true }); return; }
+  setDefinitionDownloadState({ hidden: true });
+  const availability = await ctx.translator.chromeTranslatorAvailability({ from: "en", to: target });
+  if (token !== downloadToken || availability === "unavailable") return;
+  if (availability === "available") {
+    setDefinitionDownloadState({ label: ctx.i18n.t("downloaded"), disabled: true, downloaded: true });
+  } else {
+    setDefinitionDownloadState({ label: ctx.i18n.t("download") });
+  }
+}
+
+async function downloadDefinitionLanguage() {
+  const target = ctx.i18n.resolvedLocale;
+  if (target === "en") return;
+  const token = ++downloadToken;
+  setDefinitionDownloadState({ disabled: true, label: ctx.i18n.t("downloading"), status: "" });
+  const result = await ctx.translator.prepareChromeTranslator({
+    from: "en", to: target,
+    onProgress(progress) {
+      if (token === downloadToken) definitionDownloadStatus.textContent = `${progress}%`;
+    },
+  });
+  if (token !== downloadToken) return;
+  if (result.ok) {
+    setDefinitionDownloadState({ disabled: true, label: ctx.i18n.t("downloaded"), downloaded: true });
+  } else {
+    setDefinitionDownloadState({ disabled: false, status: ctx.i18n.t("downloadUnavailable") });
+  }
+}
+
 function applyShellStrings() {
   const t = ctx.i18n.t;
   document.documentElement.lang = ctx.i18n.locale === "auto" ? (navigator.language || "en") : ctx.i18n.locale;
@@ -69,6 +117,7 @@ function applyShellStrings() {
   languageSelect.value = ctx.i18n.locale;
   applyTheme(document.documentElement.dataset.theme || "light");
   renderTabBar();
+  refreshDefinitionDownload();
 }
 
 themeToggle.addEventListener("click", async () => {
@@ -91,6 +140,7 @@ document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !settingsSheet.hidden) settingsClose.click();
 });
 languageSelect.addEventListener("change", () => ctx.i18n.setLocale(languageSelect.value));
+definitionDownloadButton.addEventListener("click", downloadDefinitionLanguage);
 textSize.addEventListener("input", () => applyTextSize(textSize.value));
 textSize.addEventListener("change", () => ctx.storage.set(SIZE_KEY, Number(textSize.value)));
 

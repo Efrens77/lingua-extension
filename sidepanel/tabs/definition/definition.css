@@ -2,7 +2,6 @@
 .definition-label { display: block; margin: 12px 0 6px; font-size: 0.8125rem; font-weight: 600; color: var(--text-2); }
 .definition-input-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
 .definition-language-choice { margin-top: 12px; }
-.definition-language-choice label { display: block; margin-bottom: 6px; font-size: 0.8125rem; font-weight: 600; color: var(--text-2); }
 .definition-language-choice select {
   min-width: 0; border: 1px solid var(--border); border-radius: 10px; padding: 9px 10px; background: var(--bg);
 }
@@ -29,6 +28,7 @@
 .definition-save-status[data-kind="error"] { color: var(--danger); }
 .definition-gloss, .definition-field { margin: 12px 0 0; color: var(--text-2); }
 .definition-gloss { font-weight: 600; }
+.definition-equivalent { margin: 8px 0 0; color: var(--text-2); font-size: .8125rem; }
 .definition-entry { margin-top: 16px; }
 .definition-entry h3 { margin: 0 0 6px; color: var(--teal-strong); font-size: 1rem; }
 .definition-entry ol { margin: 0; padding-left: 1.4rem; }
