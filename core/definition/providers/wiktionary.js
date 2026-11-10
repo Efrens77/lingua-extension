@@ -5,6 +5,7 @@ import { LANGUAGES } from "../../languages.js";
 const ENDPOINT = "https://en.wiktionary.org/w/api.php";
 const cache = new Map();
 const sourcePages = new Map();
+const searchCache = new Map();
 const mediaCache = new Map();
 const MAX_ATTEMPTS = 3;
 
@@ -157,9 +158,11 @@ function htmlEntries(renderedHtml, sourceLanguage, selectedWord) {
   if (!languageHeadingNode) return [];
 
   const out = [];
+  const headingLevel = (node) => /^H[2-6]$/.test(node?.tagName || "") ? Number(node.tagName.slice(1)) : 0;
   let node = languageHeadingNode.nextElementSibling;
   while (node && node.tagName !== "H2") {
-    const partOfSpeech = node.tagName === "H3" ? POS.get(headingText(node).toLowerCase()) : null;
+    const level = headingLevel(node);
+    const partOfSpeech = level ? POS.get(headingText(node).toLowerCase()) : null;
     if (!partOfSpeech) {
       node = node.nextElementSibling;
       continue;
@@ -167,7 +170,7 @@ function htmlEntries(renderedHtml, sourceLanguage, selectedWord) {
     const senses = [];
     const synonyms = [];
     node = node.nextElementSibling;
-    while (node && node.tagName !== "H2" && node.tagName !== "H3") {
+    while (node && (!headingLevel(node) || headingLevel(node) > level)) {
       if (node.tagName === "OL") {
         for (const item of node.querySelectorAll(":scope > li")) {
           const definition = definitionText(item);
@@ -206,13 +209,19 @@ function entriesForLanguage(source, sourceLanguage, selectedWord) {
 
 export function extractWikitextEntries(section, selectedWord = "") {
   const out = [];
-  // Part-of-speech headings are level three; their level-four subsections
-  // (Synonyms, Usage notes, etc.) stay with the owning part of speech.
-  const headings = [...section.matchAll(/^===\s*([^=]+?)\s*===\s*$/gmi)];
+  // Some entries place a part of speech below an Etymology heading, making it
+  // level four or deeper. Stop at the next heading at the same or higher level
+  // so nested Synonyms/Usage notes stay with their owning part of speech.
+  const headings = [...section.matchAll(/^(={3,6})\s*([^=]+?)\s*\1\s*$/gmi)]
+    .map((match) => ({ match, level: match[1].length, title: match[2] }));
   for (let index = 0; index < headings.length; index++) {
-    const partOfSpeech = POS.get(plain(headings[index][1]).toLowerCase());
+    const partOfSpeech = POS.get(plain(headings[index].title).toLowerCase());
     if (!partOfSpeech) continue;
-    const body = section.slice(headings[index].index + headings[index][0].length, headings[index + 1]?.index);
+    const next = headings.slice(index + 1).find((heading) => heading.level <= headings[index].level);
+    const body = section.slice(
+      headings[index].match.index + headings[index].match[0].length,
+      next?.match.index,
+    );
     const senses = [];
     const synonyms = wikitextSynonyms(body, selectedWord);
     let lastSense = -1;
@@ -264,6 +273,94 @@ async function request(word) {
     return source;
   }
   throw rateLimitError();
+}
+
+function dictionaryWord(value) {
+  return /^[\p{L}\p{M}]+(?:['’\-][\p{L}\p{M}]+)*$/u.test(String(value || "").trim());
+}
+
+function editDistanceAtMostOne(left, right) {
+  if (Math.abs(left.length - right.length) > 1) return false;
+  let leftIndex = 0;
+  let rightIndex = 0;
+  let changes = 0;
+  while (leftIndex < left.length && rightIndex < right.length) {
+    if (left[leftIndex] === right[rightIndex]) {
+      leftIndex++; rightIndex++;
+      continue;
+    }
+    if (++changes > 1) return false;
+    if (left.length > right.length) leftIndex++;
+    else if (right.length > left.length) rightIndex++;
+    else { leftIndex++; rightIndex++; }
+  }
+  return true;
+}
+
+function safeCorrection(requested, candidate) {
+  const requestedComparable = comparable(requested);
+  const candidateComparable = comparable(candidate);
+  if (!requestedComparable || !candidateComparable || !dictionaryWord(candidate)) return false;
+  // Accents do not change the underlying letters, so this is a safe recovery
+  // for entries such as "tio" → "tío".
+  if (requestedComparable === candidateComparable) return true;
+  // A single edit is intentionally conservative. It catches simple typos
+  // without silently substituting a semantically unrelated word.
+  return requestedComparable.length >= 4
+    && candidateComparable.length >= 4
+    && editDistanceAtMostOne(requestedComparable, candidateComparable);
+}
+
+async function searchCandidates(word) {
+  const key = String(word || "").toLocaleLowerCase();
+  if (searchCache.has(key)) return searchCache.get(key);
+  const url = new URL(ENDPOINT);
+  url.search = new URLSearchParams({
+    action: "query", list: "search", srsearch: word, srnamespace: "0", srlimit: "12",
+    format: "json", formatversion: "2", origin: "*",
+  });
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+    const response = await fetch(url);
+    if (response.status === 429) {
+      if (attempt === MAX_ATTEMPTS - 1) throw rateLimitError();
+      await wait(retryDelay(response.headers.get("Retry-After"), attempt));
+      continue;
+    }
+    if (!response.ok) throw new Error("Wiktionary search answered " + response.status);
+    const candidates = (await response.json())?.query?.search
+      ?.map((item) => String(item?.title || "").trim())
+      .filter((candidate) => safeCorrection(word, candidate)) || [];
+    const unique = [...new Set(candidates)];
+    searchCache.set(key, unique);
+    return unique;
+  }
+  throw rateLimitError();
+}
+
+async function sourceForLanguage(word, sourceLanguage) {
+  const direct = await request(word);
+  const directEntries = entriesForLanguage(direct, sourceLanguage, word);
+  if (directEntries.length) return { source: direct, matchedWord: word, entries: directEntries };
+
+  for (const candidate of await searchCandidates(word)) {
+    if (candidate === word) continue;
+    const source = await request(candidate);
+    const entries = entriesForLanguage(source, sourceLanguage, candidate);
+    if (entries.length) return { source, matchedWord: candidate, entries };
+  }
+  return { source: direct, matchedWord: word, entries: directEntries };
+}
+
+function lemmaFromSection(section, sourceLanguage) {
+  const sourceCode = String(sourceLanguage || "").toLocaleLowerCase().split("-")[0];
+  const templates = section.matchAll(/\{\{(?:plural of|singular of|inflection of)\|([^{}]+)\}\}/gi);
+  for (const template of templates) {
+    const values = template[1].split("|").map((value) => value.trim());
+    const languageIndex = values.findIndex((value) => value.toLocaleLowerCase().split("-")[0] === sourceCode);
+    const candidate = values[languageIndex + 1] || "";
+    if (dictionaryWord(candidate)) return candidate;
+  }
+  return "";
 }
 
 function matchingAudioFile(section, sourceLanguage) {
@@ -330,18 +427,37 @@ export const wiktionary = {
   async lookup({ word, sourceLanguage }) {
     const key = sourceLanguage + "\u0001" + word;
     if (cache.has(key)) return cache.get(key);
-    const source = await request(word);
-    const section = languageSection(source.wikitext, sourceLanguage);
-    const entriesWithSynonyms = entriesForLanguage(source, sourceLanguage, word);
+    const matched = await sourceForLanguage(word, sourceLanguage);
+    let source = matched.source;
+    let matchedWord = matched.matchedWord;
+    let section = languageSection(source.wikitext, sourceLanguage);
+    let entriesWithSynonyms = matched.entries;
+    let lemma = lemmaFromSection(section, sourceLanguage);
+
+    // Inflected forms often have only a "plural of"/"inflection of" note.
+    // Follow that reliable Wiktionary relation so the user receives the
+    // complete definition of the singular/lemma rather than a thin form note.
+    if (lemma && comparable(lemma) !== comparable(matchedWord)) {
+      const lemmaMatch = await sourceForLanguage(lemma, sourceLanguage);
+      if (lemmaMatch.entries.length) {
+        source = lemmaMatch.source;
+        matchedWord = lemmaMatch.matchedWord;
+        section = languageSection(source.wikitext, sourceLanguage);
+        entriesWithSynonyms = lemmaMatch.entries;
+        lemma = lemmaMatch.matchedWord;
+      }
+    }
     const result = {
       word,
       sourceLanguage,
       phonetic: findPhonetic(section, sourceLanguage),
       entries: entriesWithSynonyms.map(({ synonyms, ...entry }) => entry),
       synonyms: uniqueSynonyms(entriesWithSynonyms.flatMap((entry) => entry.synonyms || []), word),
+      canonicalWord: matchedWord,
+      inflectionOf: lemma || "",
       attributions: [{
         name: "Wiktionary",
-        url: "https://en.wiktionary.org/wiki/" + encodeURIComponent(word),
+        url: "https://en.wiktionary.org/wiki/" + encodeURIComponent(matchedWord),
         license: "CC BY-SA 4.0",
         licenseUrl: "https://creativecommons.org/licenses/by-sa/4.0/",
       }],
@@ -356,6 +472,18 @@ export const wiktionary = {
   async findLanguages({ word }) {
     const variants = [...new Set([word, word.toLocaleLowerCase()])];
     for (const candidate of variants) {
+      const source = await request(candidate);
+      const headings = [...source.wikitext.matchAll(/^==\s*([^=]+?)\s*==\s*$/gmi)]
+        .map((match) => match[1].trim());
+      const languages = [];
+      for (const heading of headings) {
+        const code = codeForHeading(heading);
+        if (!code || languages.includes(code)) continue;
+        if (entriesForLanguage(source, code, candidate).length) languages.push(code);
+      }
+      if (languages.length) return languages;
+    }
+    for (const candidate of await searchCandidates(word)) {
       const source = await request(candidate);
       const headings = [...source.wikitext.matchAll(/^==\s*([^=]+?)\s*==\s*$/gmi)]
         .map((match) => match[1].trim());
