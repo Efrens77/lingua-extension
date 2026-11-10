@@ -612,7 +612,7 @@ export default {
         renderSource();
         setPageProgress();
       } catch (err) {
-        setPageProgress();
+        setPageProgress(0, navigator.onLine === false ? "You're offline." : t("unavailable"));
         console.error("[Lingua] page translation failed:", err);
       }
     }

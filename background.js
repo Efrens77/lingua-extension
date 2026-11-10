@@ -7,7 +7,10 @@ const PAGE_STATE_KEY = "translate.page-state";
 const runs = new Map(); // tab id -> AbortController
 const pageCache = new Map(); // current worker lifetime: tab + URL + source + target + text
 const pageViewCache = new Map(); // metadata for text mappings retained by the content script
-const BATCH_MAX_CHARS = 400;
+// Keep batches within the free providers' safe per-request size.  Sending one
+// request per tiny text node made a normal 12k-character page issue dozens of
+// requests, which is especially prone to free-endpoint throttling.
+const BATCH_MAX_CHARS = 600;
 let offscreenReady = null;
 
 // Full Page narration deliberately lives in the service worker instead of the
@@ -404,20 +407,27 @@ async function translatePage(tabId, to) {
   runs.set(tabId, controller);
   publish({ type: MSG.PAGE_PROGRESS, tabId, percent: 0 });
   try {
-    const collected = await sendToTab(tab, { type: MSG.GET_PAGE_SEGMENTS, maxChars: LIMITS.page });
-    if (!collected?.ok || !collected.segments?.length) throw new Error("This page doesn't have readable text");
-    const { translations, detectedFrom } = await translateSegments(
-      collected.segments, tab, to, collected.lang || "auto", controller.signal,
-      (done, total) => publish({ type: MSG.PAGE_PROGRESS, tabId, percent: Math.round((done / total) * 100) })
-    );
-    if (runs.get(tabId) !== controller) throw new DOMException("Aborted", "AbortError");
-    const applied = await sendToTab(tab, { type: MSG.APPLY_PAGE_TRANSLATION, translations });
-    if (!applied?.ok) throw new Error("Lingua couldn't update this page");
-    const state = { url: tab.url, to, view: "translated", detectedFrom };
-    pageViewCache.set(tabId, state);
-    await saveState(tabId, state);
-    publish({ type: MSG.PAGE_STATE, tabId, state });
-    return { ok: true, state };
+    // Sites built with React/Vue often replace their text nodes while a
+    // translation is in flight. Retry once from a fresh DOM snapshot when
+    // that leaves no eligible nodes to update.
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const collected = await sendToTab(tab, { type: MSG.GET_PAGE_SEGMENTS, maxChars: LIMITS.page });
+      if (!collected?.ok || !collected.segments?.length) throw new Error("This page doesn't have readable text");
+      const { translations, detectedFrom } = await translateSegments(
+        collected.segments, tab, to, collected.lang || "auto", controller.signal,
+        (done, total) => publish({ type: MSG.PAGE_PROGRESS, tabId, percent: Math.round((done / total) * 100) })
+      );
+      if (runs.get(tabId) !== controller) throw new DOMException("Aborted", "AbortError");
+      const applied = await sendToTab(tab, { type: MSG.APPLY_PAGE_TRANSLATION, translations });
+      if (!applied?.ok) throw new Error("Lingua couldn't update this page");
+      if (applied.connected === 0 && translations.length && attempt === 0) continue;
+      if (applied.connected === 0 && translations.length) throw new Error("This page changed while it was being translated");
+      const state = { url: tab.url, to, view: "translated", detectedFrom };
+      pageViewCache.set(tabId, state);
+      await saveState(tabId, state);
+      publish({ type: MSG.PAGE_STATE, tabId, state });
+      return { ok: true, state };
+    }
   } catch (err) {
     if (err?.name !== "AbortError") {
       publish({
@@ -435,9 +445,25 @@ async function translatePage(tabId, to) {
   }
 }
 
+function isMissingTabError(error) {
+  return /no tab with id/i.test(String(error?.message || error));
+}
+
 async function restorePage(tabId) {
   runs.get(tabId)?.abort();
-  const tab = await chrome.tabs.get(tabId);
+  let tab;
+  try {
+    tab = await chrome.tabs.get(tabId);
+  } catch (error) {
+    // Closing a tab while the side panel is changing tabs can leave a queued
+    // restore request behind. There is nothing left to restore, so simply
+    // discard Lingua's state instead of reporting a misleading error.
+    if (!isMissingTabError(error)) throw error;
+    runs.delete(tabId);
+    pageViewCache.delete(tabId);
+    await clearState(tabId);
+    return { ok: true, skipped: true };
+  }
   const result = await sendToTab(tab, { type: MSG.RESTORE_PAGE_TEXT });
   const previous = await getState(tabId);
   const state = { url: tab.url, view: "original" };
@@ -452,7 +478,10 @@ async function setPageView(tabId, view) {
   if (view !== "translated") return restorePage(tabId);
   const tab = await chrome.tabs.get(tabId);
   const result = await sendToTab(tab, { type: MSG.SET_PAGE_TEXT_VIEW, view });
-  if (!result?.ok || !result.changed) return { ok: false, reason: "unavailable" };
+  // The content script reports `applied` (and `cached`), not `changed`.
+  // Checking a non-existent field forced an unnecessary full retranslation
+  // whenever the side panel fell through to this path.
+  if (!result?.ok || (!result.cached && !result.connected)) return { ok: false, reason: "unavailable" };
   const previous = await getState(tabId);
   const state = { ...previous, url: tab.url, view: "translated" };
   await saveState(tabId, state);

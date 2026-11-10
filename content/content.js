@@ -289,14 +289,16 @@
   }
 
   function swapPageView(view) {
-    if (view === pageView) return Promise.resolve({ ok: true, cached: pageSegments.size > 0, applied: 0 });
-    if (!pageSegments.size) return Promise.resolve({ ok: true, cached: false, applied: 0 });
+    if (view === pageView) return Promise.resolve({ ok: true, cached: pageSegments.size > 0, connected: pageSegments.size, applied: 0 });
+    if (!pageSegments.size) return Promise.resolve({ ok: true, cached: false, connected: 0, applied: 0 });
     const x = window.scrollX;
     const y = window.scrollY;
     return new Promise((resolve) => requestAnimationFrame(() => {
       let applied = 0;
+      let connected = 0;
       for (const entry of pageSegments.values()) {
         if (!entry.node?.isConnected) continue;
+        connected++;
         const next = view === "translated" ? entry.translated : entry.original;
         if (typeof next !== "string" || entry.node.nodeValue === next) continue;
         entry.node.nodeValue = next;
@@ -305,7 +307,7 @@
       pageView = view;
       requestAnimationFrame(() => {
         window.scrollTo(x, y);
-        resolve({ ok: true, cached: view === "translated" && applied > 0, applied });
+        resolve({ ok: true, cached: view === "translated" && connected > 0, changed: applied > 0, connected, applied });
       });
     }));
   }
