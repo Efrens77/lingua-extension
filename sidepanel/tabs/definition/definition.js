@@ -489,6 +489,35 @@ export default {
           sourceLanguage = raw.sourceLanguage;
         }
         raw ??= await dictionary.lookupDefinition({ word: valid, sourceLanguage });
+        if (!forcedLanguage && sourceLanguage === "en") {
+          // Keep a strong structured English definition (for example, café),
+          // but do not let a weak English Wiktionary match hide a clear
+          // source-language entry such as Spanish tío or tía.
+          const alternative = await dictionary.preferredAccentedWordDefinition({
+            word: valid,
+            englishResult: raw,
+          }).catch(() => null);
+          if (alternative) {
+            sourceLanguage = alternative.sourceLanguage;
+            raw = alternative.result;
+          }
+        }
+        // A one-word detector can occasionally favor the page/interface
+        // language for an accentless or plural foreign word. If that exact
+        // lookup has no result, retry the established typed-word path, which
+        // can identify a valid Wiktionary language section or offer the
+        // language chooser without replacing an explicit user choice.
+        if (raw.notFound && manual && !forcedLanguage) {
+          const fallback = await dictionary.lookupTypedDefinition({ word: valid });
+          if (fallback.ambiguous) {
+            if (request === state.request) showLanguageChoice(fallback.languages);
+            return;
+          }
+          if (!fallback.notFound) {
+            raw = fallback;
+            sourceLanguage = fallback.sourceLanguage;
+          }
+        }
         raw = await englishDictionaryFallback(valid, sourceLanguage, raw);
         if (raw.notFound) {
           if (request === state.request) showMessage(t("definitionNotFound"));
@@ -568,7 +597,7 @@ export default {
       requestAnimationFrame(() => { el.heading.tabIndex = -1; el.heading.focus(); });
     }
 
-    function useSelection(text, details = {}) {
+    function useSelection(text) {
       if (!state.active) return;
       const selected = String(text || "").trim();
       if (!selected) return;
@@ -578,7 +607,10 @@ export default {
         showMessage(t("definitionOneWord"));
         return;
       }
-      lookup(selected, details.lang || "");
+      // The page's declared language can differ from an individual selected
+      // word. Use the same word-first path as the Look up button so a foreign
+      // word on an English page is detected and defined immediately.
+      lookup(selected, "", { manual: true });
     }
 
     el.lookup.addEventListener("click", () => lookup(el.word.value, "", { manual: true }));

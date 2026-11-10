@@ -50,6 +50,29 @@ export function hasWeakDefinitions(result, word = result?.word) {
   });
 }
 
+function hasDiacritics(word) {
+  return String(word || "").normalize("NFD") !== String(word || "").normalize("NFD").replace(/\p{M}/gu, "");
+}
+
+function hasStrongStructuredEnglishDefinition(result, word) {
+  return result?.provider === freeDictionary.id && !hasWeakDefinitions(result, word);
+}
+
+// Single-word detection can classify accented foreign words as English. Do not
+// ban accented English loanwords: retain English when Free Dictionary has a
+// substantive result (for example, "café"). Otherwise, prefer the first
+// validated non-English Wiktionary language section for the exact word.
+export async function preferredAccentedWordDefinition({ word, englishResult }) {
+  if (!hasDiacritics(word) || hasStrongStructuredEnglishDefinition(englishResult, word)) return null;
+  const languages = await wiktionary.findLanguages({ word });
+  for (const sourceLanguage of languages) {
+    if (sourceLanguage === "en") continue;
+    const result = await lookupDefinition({ word, sourceLanguage });
+    if (!result.notFound) return { sourceLanguage, result };
+  }
+  return null;
+}
+
 function complete(result) {
   return usable(result) && Boolean(result.phonetic)
     && result.entries.some((entry) => entry.senses?.some((sense) => sense.example));
