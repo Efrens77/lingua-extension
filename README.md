@@ -4,6 +4,8 @@ Translate the page you're reading, translate a highlighted phrase, or look up on
 
 Status: **Alpha v0.4**. Translate, Define, and Learn are available. See [RELEASE_NOTES.md](RELEASE_NOTES.md) for install and usage instructions.
 
+Read Lingua's [Privacy Policy](privacy-policy.html).
+
 ## Run it locally
 
 1. `chrome://extensions` → turn on **Developer mode**
